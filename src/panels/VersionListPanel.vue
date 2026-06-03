@@ -6,6 +6,9 @@ import { listen } from "@tauri-apps/api/event";
 import type { NodeVersion } from "../types";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import VersionRow from "../components/VersionRow.vue";
+import { useTheme } from "../composables/useTheme";
+
+const { isDark, toggleTheme } = useTheme();
 
 const searchValue = ref("");
 const showLtsOnly = ref(true);
@@ -158,9 +161,21 @@ onUnmounted(() => {
         <div class="panel-head">
           <div class="panel-header">
             <div class="panel-title">Node.js 版本管理</div>
-            <div class="lts-toggle">
-              <span class="lts-label">仅 LTS</span>
-              <t-switch v-model="showLtsOnly" size="small" />
+            <div class="header-actions">
+              <div class="lts-toggle">
+                <span class="lts-label">仅 LTS</span>
+                <t-switch v-model="showLtsOnly" size="small" />
+              </div>
+              <t-button
+                class="theme-btn"
+                variant="text"
+                shape="circle"
+                size="small"
+                @click="toggleTheme"
+              >
+                <ModeDarkFilledIcon v-if="!isDark" />
+                <ModeLightFilledIcon v-else />
+              </t-button>
             </div>
           </div>
 
@@ -253,6 +268,20 @@ onUnmounted(() => {
 .lts-label {
   font-size: 12px;
   color: var(--text);
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.theme-btn {
+  color: var(--text);
+}
+
+.theme-btn :deep(.t-button__icon) {
+  font-size: 18px;
 }
 
 .search-wrapper {
