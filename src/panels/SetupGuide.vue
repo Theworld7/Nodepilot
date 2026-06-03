@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
-import { Button } from 'tdesign-mobile-vue'
 import CodeBlock from '../components/CodeBlock.vue'
 
 const emit = defineEmits<{ done: [] }>()
@@ -65,14 +64,14 @@ onMounted(async () => {
         <CodeBlock :code="`source ~/.${shell}rc`" />
       </div>
 
-      <Button
+      <t-button
         theme="primary"
         size="small"
         block
         @click="markDone"
       >
         我已设置完成
-      </Button>
+      </t-button>
     </div>
   </div>
 </template>
@@ -81,7 +80,7 @@ onMounted(async () => {
 .setup-overlay {
   position: fixed;
   inset: 0;
-  background: var(--bg, #fff);
+  background: var(--bg);
   z-index: 1000;
   display: flex;
   align-items: center;
@@ -102,39 +101,26 @@ onMounted(async () => {
   font-size: 20px;
   font-weight: 600;
   text-align: center;
-  color: var(--text-h, #08060d);
+  color: var(--text-h);
   margin: 0;
 }
 
 .setup-desc {
   font-size: 14px;
   line-height: 1.6;
-  color: var(--text, #6b6375);
+  color: var(--text);
   margin: 0;
 }
 
 .setup-shell-hint {
   font-size: 12px;
-  color: var(--text, #6b6375);
-}
-
-.setup-command {
-  background: var(--code-bg, #f4f3ec);
-  border-radius: 8px;
-  padding: 12px;
-  overflow-x: auto;
-}
-
-.setup-command code {
-  font-size: 12px;
-  word-break: break-all;
-  white-space: pre-wrap;
+  color: var(--text);
 }
 
 .setup-instructions {
   font-size: 13px;
   line-height: 1.8;
-  color: var(--text, #6b6375);
+  color: var(--text);
 }
 
 .setup-instructions p {
@@ -143,7 +129,7 @@ onMounted(async () => {
 
 .setup-instructions code {
   display: block;
-  background: var(--code-bg, #f4f3ec);
+  background: var(--code-bg);
   border-radius: 4px;
   padding: 8px 12px;
   font-size: 12px;

@@ -59,12 +59,12 @@ const displayCode = computed(() => props.code ?? '')
 <style scoped>
 .code-block {
   position: relative;
-  background: var(--code-bg, #f4f3ec);
-  border-radius: 8px;
+  background: var(--code-bg);
+  border-radius: var(--radius-sm);
   padding: 12px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, "Roboto Mono", "Courier New", monospace;
   font-size: 12px;
-  color: var(--text, #6b6375);
+  color: var(--text);
 }
 
 .copy-btn {

@@ -222,13 +222,13 @@ onUnmounted(() => {
   flex-direction: column;
   height: 100%;
   padding: 12px;
-  background: #fff;
+  background: var(--surface-alt);
   box-sizing: border-box;
 }
 
 .panel-head {
-  background: #f7f7f7;
-  border-radius: 16px;
+  background: var(--surface);
+  border-radius: var(--radius-lg);
 }
 
 .panel-header {
@@ -241,7 +241,7 @@ onUnmounted(() => {
 .panel-title {
   font-size: 16px;
   font-weight: 600;
-  color: var(--text-h, #08060d);
+  color: var(--text-h);
 }
 
 .lts-toggle {
@@ -252,7 +252,7 @@ onUnmounted(() => {
 
 .lts-label {
   font-size: 12px;
-  color: var(--text, #6b6375);
+  color: var(--text);
 }
 
 .search-wrapper {
@@ -261,7 +261,7 @@ onUnmounted(() => {
 }
 
 .search-wrapper :deep(.t-search__input-box) {
-  background-color: #e5e5e5;
+  background-color: var(--input-bg);
 }
 
 .loading-state {
@@ -274,27 +274,27 @@ onUnmounted(() => {
   flex: 1;
   overflow-y: auto;
   padding: 0;
-  background: #f7f7f7;
-  border-radius: 16px;
+  background: var(--surface);
+  border-radius: var(--radius-lg);
   margin-top: 12px;
 }
 
 .install-progress {
   padding: 12px 16px;
-  background: var(--code-bg, #f4f3ec);
+  background: var(--code-bg);
   margin-top: 12px;
-  border-radius: 16px;
+  border-radius: var(--radius-lg);
 }
 
 .progress-version {
   font-size: 12px;
   margin-bottom: 8px;
-  color: var(--text, #6b6375);
+  color: var(--text);
 }
 
 .progress-stage {
   font-size: 11px;
-  color: var(--text, #6b6375);
+  color: var(--text);
   margin-top: 4px;
   text-align: right;
 }

@@ -110,7 +110,7 @@ function getStatusTheme(
 .version-name {
   font-size: 14px;
   font-weight: 500;
-  color: var(--text-h, #08060d);
+  color: var(--text-h);
 }
 
 .lts-tag {
