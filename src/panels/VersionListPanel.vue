@@ -169,9 +169,8 @@ onUnmounted(() => {
               <t-divider layout="vertical" />
               <t-button
                 class="theme-btn"
-                variant="text"
                 shape="circle"
-                size="small"
+                size="extra-small"
                 @click="toggleTheme"
               >
                 <ModeDarkFilledIcon v-if="!isDark" />
@@ -285,7 +284,7 @@ onUnmounted(() => {
   color: var(--text);
 }
 
-.theme-btn :deep(.t-button__icon) {
+.theme-btn :deep(.t-button__content) {
   font-size: 18px;
   transform: translateY(-1px);
 }
