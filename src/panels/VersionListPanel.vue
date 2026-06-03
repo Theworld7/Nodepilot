@@ -186,7 +186,11 @@ onUnmounted(() => {
           <div class="progress-version">
             正在安装 {{ installingVersion }}...
           </div>
-          <Progress :percentage="installProgress" />
+          <Progress :percentage="Math.round(installProgress * 10) / 10">
+            <template #label>
+              <span class="progress-pct-label">{{ installProgress.toFixed(1) }}%</span>
+            </template>
+          </Progress>
           <div class="progress-stage">{{ installStage }}</div>
         </div>
 
@@ -225,14 +229,13 @@ onUnmounted(() => {
   flex-direction: column;
   height: 100%;
   padding: 12px;
-  background: rgba(255, 255, 255, 0.8);
+  background: #fff;
   box-sizing: border-box;
 }
 
 .panel-head {
   background: #f7f7f7;
   border-radius: 16px;
-  margin-bottom: 12px;
 }
 
 .panel-header {
@@ -280,13 +283,14 @@ onUnmounted(() => {
   padding: 0;
   background: #f7f7f7;
   border-radius: 16px;
+  margin-top: 12px;
 }
 
 .install-progress {
   padding: 12px 16px;
   background: var(--code-bg, #f4f3ec);
-  margin: 8px 16px;
-  border-radius: 8px;
+  margin-top: 12px;
+  border-radius: 16px;
 }
 
 .progress-version {
@@ -300,5 +304,12 @@ onUnmounted(() => {
   color: var(--text, #6b6375);
   margin-top: 4px;
   text-align: right;
+}
+
+.progress-pct-label {
+  display: inline-block;
+  min-width: 3.2em;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 </style>

@@ -80,10 +80,11 @@ function getStatusTheme(
           v-else-if="!version.installed"
           size="extra-small"
           variant="text"
-          :loading="installing"
+          :disabled="installing"
           @click.stop="emit('install', version)"
         >
-          <DownloadIcon />
+          <Loading v-if="installing" theme="spinner" />
+          <DownloadIcon v-else />
         </Button>
       </template>
     </Cell>

@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::time::Instant;
 
 use reqwest::Client;
 use tauri::{AppHandle, Emitter};
@@ -14,6 +15,16 @@ pub struct VersionInstaller {
     http_client: Client,
     source_url: String,
     versions_dir: PathBuf,
+}
+
+/// Emit progress at most once per 150ms to avoid flooding the event bus.
+fn throttled_emit(app: &AppHandle, progress: &InstallProgress, last_emit: &mut Instant) {
+    let now = Instant::now();
+    if now.duration_since(*last_emit).as_millis() < 150 {
+        return;
+    }
+    *last_emit = now;
+    let _ = app.emit("install_progress", progress);
 }
 
 impl VersionInstaller {
@@ -103,7 +114,7 @@ impl VersionInstaller {
 
         self.emit_progress(app, version, "downloading", 0.0);
 
-        let archive_bytes = self.download_archive(version).await?;
+        let archive_bytes = self.download_archive(version, app).await?;
 
         std::fs::create_dir_all(&version_dir)
             .map_err(|e| InstallError::Io(e.to_string()))?;
@@ -120,92 +131,153 @@ impl VersionInstaller {
         Ok(())
     }
 
-    async fn download_archive(&self, version: &str) -> Result<Vec<u8>, InstallError> {
+    async fn download_archive(
+        &self,
+        version: &str,
+        app: &AppHandle,
+    ) -> Result<Vec<u8>, InstallError> {
         // Try primary platform first
         let url = self.download_url(version);
+        let result = self.do_streaming_download(&url, version, app).await;
+
+        match result {
+            Ok(bytes) => return Ok(bytes),
+            Err(err) => {
+                // If 404 and fallback available, try fallback platform
+                if let InstallError::Download(ref msg) = err {
+                    if msg.starts_with("HTTP 404") || msg.starts_with("http: status 404") || msg.contains("404") {
+                        if let Some(fallback) = self.fallback_platform_prefix() {
+                            let fallback_url = self.download_url_with_prefix(version, fallback);
+                            return self.do_streaming_download(&fallback_url, version, app).await;
+                        }
+                    }
+                }
+                return Err(err);
+            }
+        }
+    }
+
+    /// Stream the response body chunk by chunk, emitting progress after each chunk.
+    async fn do_streaming_download(
+        &self,
+        url: &str,
+        version: &str,
+        app: &AppHandle,
+    ) -> Result<Vec<u8>, InstallError> {
         let resp = self
             .http_client
-            .get(&url)
+            .get(url)
             .send()
             .await
             .map_err(|e| InstallError::Download(e.to_string()))?;
 
-        if resp.status().is_success() {
-            return resp
-                .bytes()
-                .await
-                .map(|b| b.to_vec())
-                .map_err(|e| InstallError::Download(e.to_string()));
+        if !resp.status().is_success() {
+            return Err(InstallError::Download(format!(
+                "HTTP {}",
+                resp.status()
+            )));
         }
 
-        // If 404 and fallback available, try fallback platform
-        if resp.status() == reqwest::StatusCode::NOT_FOUND {
-            if let Some(fallback) = self.fallback_platform_prefix() {
-                let fallback_url = self.download_url_with_prefix(version, fallback);
-                let resp = self
-                    .http_client
-                    .get(&fallback_url)
-                    .send()
-                    .await
-                    .map_err(|e| InstallError::Download(e.to_string()))?;
+        // Determine total size from Content-Length header
+        let total = resp
+            .content_length()
+            .unwrap_or(0);
 
-                if resp.status().is_success() {
-                    return resp
-                        .bytes()
-                        .await
-                        .map(|b| b.to_vec())
-                        .map_err(|e| InstallError::Download(e.to_string()));
-                }
+        let mut collected = Vec::with_capacity(total as usize);
+        let mut received: u64 = 0;
+        let mut last_emit = Instant::now();
 
-                return Err(InstallError::Download(format!(
-                    "HTTP {} (tried: {}, {})",
-                    resp.status(),
-                    url,
-                    fallback_url
-                )));
+        let mut stream = resp;
+        while let Some(chunk) = stream
+            .chunk()
+            .await
+            .map_err(|e| InstallError::Download(e.to_string()))?
+        {
+            received += chunk.len() as u64;
+            collected.extend_from_slice(&chunk);
+
+            if total > 0 {
+                let pct = (received as f64 / total as f64) * 100.0;
+                let progress = InstallProgress {
+                    version: version.to_string(),
+                    stage: "downloading".to_string(),
+                    percent: pct,
+                };
+                throttled_emit(app, &progress, &mut last_emit);
             }
         }
 
-        Err(InstallError::Download(format!("HTTP {}", resp.status())))
+        Ok(collected)
     }
 
     fn extract_tar_gz(
         &self,
         data: &[u8],
         version: &str,
-        _app: &AppHandle,
+        app: &AppHandle,
     ) -> Result<(), InstallError> {
-        use std::io::Write;
+        use flate2::read::GzDecoder;
+        use tar::Archive;
 
         let version_dir = self.version_dir(version);
+        let decoder = GzDecoder::new(data);
+        let mut archive = Archive::new(decoder);
 
-        // Write archive to temp file, then use system tar to extract
-        let tmp = std::env::temp_dir().join(format!("nodepilot-{}.tar.gz", version));
+        // First pass: count total entries for progress tracking
+        let total = {
+            let decoder2 = GzDecoder::new(data);
+            let mut a2 = Archive::new(decoder2);
+            a2.entries()
+                .map_err(|e| InstallError::Extract(e.to_string()))?
+                .count()
+                .max(1)
+        };
+
+        let mut last_emit = Instant::now();
+        let mut processed: usize = 0;
+
+        for entry in archive
+            .entries()
+            .map_err(|e| InstallError::Extract(e.to_string()))?
         {
-            let mut f = std::fs::File::create(&tmp)
-                .map_err(|e| InstallError::Io(e.to_string()))?;
-            f.write_all(data)
-                .map_err(|e| InstallError::Io(e.to_string()))?;
-        }
+            let mut entry = entry.map_err(|e| InstallError::Extract(e.to_string()))?;
 
-        let output = std::process::Command::new("tar")
-            .arg("-xzf")
-            .arg(&tmp)
-            .arg("-C")
-            .arg(&version_dir)
-            .arg("--strip-components=1")
-            .output()
-            .map_err(|e| InstallError::Extract(format!("tar command failed: {}", e)))?;
+            // Strip the top-level directory (e.g. "node-v20.11.0-darwin-arm64/")
+            let path = entry.path().map_err(|e| InstallError::Extract(e.to_string()))?;
+            let stripped: PathBuf = path.components().skip(1).collect();
 
-        // Clean up temp file
-        let _ = std::fs::remove_file(&tmp);
+            if stripped.as_os_str().is_empty() {
+                processed += 1;
+                continue;
+            }
 
-        if !output.status.success() {
-            return Err(InstallError::Extract(format!(
-                "tar exited with {}: {}",
-                output.status,
-                String::from_utf8_lossy(&output.stderr),
-            )));
+            let target = version_dir.join(&stripped);
+
+            if entry
+                .header()
+                .entry_type()
+                .is_dir()
+            {
+                std::fs::create_dir_all(&target)
+                    .map_err(|e| InstallError::Io(e.to_string()))?;
+            } else {
+                if let Some(parent) = target.parent() {
+                    std::fs::create_dir_all(parent)
+                        .map_err(|e| InstallError::Io(e.to_string()))?;
+                }
+                entry
+                    .unpack(&target)
+                    .map_err(|e| InstallError::Extract(e.to_string()))?;
+            }
+
+            processed += 1;
+            let pct = (processed as f64 / total as f64) * 100.0;
+            let progress = InstallProgress {
+                version: version.to_string(),
+                stage: "extracting".to_string(),
+                percent: pct,
+            };
+            throttled_emit(app, &progress, &mut last_emit);
         }
 
         Ok(())
@@ -225,6 +297,7 @@ impl VersionInstaller {
 
         let version_dir = self.version_dir(version);
         let total = archive.len();
+        let mut last_emit = Instant::now();
 
         for i in 0..total {
             let mut entry = archive
@@ -254,12 +327,13 @@ impl VersionInstaller {
             }
 
             if total > 0 {
-                self.emit_progress(
-                    app,
-                    version,
-                    "extracting",
-                    ((i as f64 + 1.0) / total as f64) * 100.0,
-                );
+                let pct = ((i as f64 + 1.0) / total as f64) * 100.0;
+                let progress = InstallProgress {
+                    version: version.to_string(),
+                    stage: "extracting".to_string(),
+                    percent: pct,
+                };
+                throttled_emit(app, &progress, &mut last_emit);
             }
         }
 
