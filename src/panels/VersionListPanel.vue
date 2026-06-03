@@ -159,11 +159,8 @@ onUnmounted(() => {
           <div class="panel-header">
             <div class="panel-title">Node.js 版本管理</div>
             <div class="lts-toggle">
-              <t-switch
-                v-model="showLtsOnly"
-                size="small"
-                :label="['仅 LTS', '仅 LTS']"
-              />
+              <span class="lts-label">仅 LTS</span>
+              <t-switch v-model="showLtsOnly" size="small" />
             </div>
           </div>
 
@@ -250,6 +247,12 @@ onUnmounted(() => {
 .lts-toggle {
   display: flex;
   align-items: center;
+  gap: 6px;
+}
+
+.lts-label {
+  font-size: 12px;
+  color: var(--text);
 }
 
 .search-wrapper {
