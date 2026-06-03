@@ -166,6 +166,7 @@ onUnmounted(() => {
                 <span class="lts-label">仅 LTS</span>
                 <t-switch v-model="showLtsOnly" size="small" />
               </div>
+              <t-divider layout="vertical" />
               <t-button
                 class="theme-btn"
                 variant="text"
@@ -276,12 +277,17 @@ onUnmounted(() => {
   gap: 4px;
 }
 
+.header-actions :deep(.t-divider--vertical) {
+  height: 16px;
+}
+
 .theme-btn {
   color: var(--text);
 }
 
 .theme-btn :deep(.t-button__icon) {
   font-size: 18px;
+  transform: translateY(-1px);
 }
 
 .search-wrapper {
