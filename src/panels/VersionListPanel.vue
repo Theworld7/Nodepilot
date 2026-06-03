@@ -2,9 +2,6 @@
 import { ref, computed, onMounted, onUnmounted } from "vue";
 import {
   Search,
-  Cell,
-  Button,
-  Tag,
   Switch,
   PullDownRefresh,
   Loading,
@@ -13,9 +10,9 @@ import {
 } from "tdesign-mobile-vue";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { DownloadIcon, CheckCircleIcon, DeleteIcon } from "tdesign-icons-vue-next";
 import type { NodeVersion } from "../types";
 import type { UnlistenFn } from "@tauri-apps/api/event";
+import VersionRow from "../components/VersionRow.vue";
 
 const searchValue = ref("");
 const showLtsOnly = ref(true);
@@ -25,6 +22,7 @@ const refreshing = ref(false);
 const versions = ref<NodeVersion[]>([]);
 
 const installingVersion = ref<string | null>(null);
+const deletingVersion = ref<string | null>(null);
 const installProgress = ref(0);
 const installStage = ref("");
 
@@ -42,20 +40,6 @@ const filteredVersions = computed(() => {
   }
   return list;
 });
-
-function getStatusLabel(v: NodeVersion): string {
-  if (v.active) return "使用中";
-  if (v.installed) return "已安装";
-  return "可安装";
-}
-
-function getStatusTheme(
-  v: NodeVersion,
-): "default" | "primary" | "success" | "warning" | "danger" {
-  if (v.active) return "success";
-  if (v.installed) return "primary";
-  return "default";
-}
 
 async function onRefresh() {
   refreshing.value = true;
@@ -116,12 +100,17 @@ async function onDelete(v: NodeVersion) {
     });
   });
   if (!confirmed) return;
+  deletingVersion.value = v.version;
   try {
     await invoke("delete_version", { version: v.version });
-    const idx = versions.value.indexOf(v);
-    if (idx > -1) versions.value.splice(idx, 1);
+    const target = versions.value.find((x) => x.version === v.version);
+    if (target) {
+      target.installed = false;
+    }
   } catch (e) {
     console.error("delete failed:", e);
+  } finally {
+    deletingVersion.value = null;
   }
 }
 
@@ -206,55 +195,16 @@ onUnmounted(() => {
         </div>
 
         <div v-else class="version-list">
-          <div
+          <VersionRow
             v-for="v in filteredVersions"
             :key="v.version"
-            class="version-row"
-          >
-            <Cell @click="v.installed && !v.active ? onActivate(v) : undefined">
-              <template #title>
-                <div class="cell-title-row">
-                  <span class="version-name">{{ v.version }}</span>
-                  <Tag v-if="v.lts" theme="warning" size="small" class="lts-tag"
-                    >LTS</Tag
-                  >
-                  <Tag :theme="getStatusTheme(v)" size="small">
-                    {{ getStatusLabel(v) }}
-                  </Tag>
-                </div>
-              </template>
-              <template #description>{{ v.date }}</template>
-              <template #note>
-                <template v-if="v.installed && !v.active">
-                  <Button
-                    size="extra-small"
-                    theme="primary"
-                    variant="text"
-                    @click.stop="onActivate(v)"
-                  >
-                    <CheckCircleIcon />
-                  </Button>
-                  <Button
-                    size="extra-small"
-                    theme="danger"
-                    variant="text"
-                    @click.stop="onDelete(v)"
-                  >
-                    <DeleteIcon />
-                  </Button>
-                </template>
-                <Button
-                  v-else-if="!v.installed"
-                  size="extra-small"
-                  variant="text"
-                  :loading="installingVersion === v.version"
-                  @click.stop="onInstall(v)"
-                >
-                  <DownloadIcon />
-                </Button>
-              </template>
-            </Cell>
-          </div>
+            :version="v"
+            :installing="installingVersion === v.version"
+            :deleting="deletingVersion === v.version"
+            @install="onInstall"
+            @activate="onActivate"
+            @delete="onDelete"
+          />
         </div>
       </div>
     </PullDownRefresh>
@@ -330,33 +280,6 @@ onUnmounted(() => {
   padding: 0;
   background: #f7f7f7;
   border-radius: 16px;
-}
-
-.cell-title-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.version-name {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-h, #08060d);
-}
-
-.lts-tag {
-  flex-shrink: 0;
-}
-
-.version-row :deep(.t-cell) {
-  background: transparent;
-}
-
-.version-row :deep(.t-cell__right) {
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-  padding-left: 8px;
 }
 
 .install-progress {
