@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { Cell, Tag, Button, Loading } from "tdesign-mobile-vue"
-import { DownloadIcon, CheckCircleIcon, DeleteIcon } from "tdesign-icons-vue-next"
 import type { NodeVersion } from "../types"
 
 interface Props {
@@ -33,7 +31,7 @@ function getStatusTheme(
 
 <template>
   <div class="version-row">
-    <Cell
+    <t-cell
       @click="
         version.installed && !version.active
           ? emit('activate', version)
@@ -43,51 +41,51 @@ function getStatusTheme(
       <template #title>
         <div class="cell-title-row">
           <span class="version-name">{{ version.version }}</span>
-          <Tag
+          <t-tag
             v-if="version.lts"
             theme="warning"
             size="small"
             class="lts-tag"
-          >LTS</Tag>
-          <Tag :theme="getStatusTheme(version)" size="small">
+          >LTS</t-tag>
+          <t-tag :theme="getStatusTheme(version)" size="small">
             {{ getStatusLabel(version) }}
-          </Tag>
+          </t-tag>
         </div>
       </template>
       <template #description>{{ version.date }}</template>
       <template #note>
         <template v-if="version.installed && !version.active">
-          <Button
+          <t-button
             size="extra-small"
             theme="primary"
             variant="text"
             @click.stop="emit('activate', version)"
           >
             <CheckCircleIcon />
-          </Button>
-          <Button
+          </t-button>
+          <t-button
             size="extra-small"
             theme="danger"
             variant="text"
             :disabled="deleting"
             @click.stop="emit('delete', version)"
           >
-            <Loading v-if="deleting" theme="spinner" />
+            <t-loading v-if="deleting" theme="spinner" />
             <DeleteIcon v-else />
-          </Button>
+          </t-button>
         </template>
-        <Button
+        <t-button
           v-else-if="!version.installed"
           size="extra-small"
           variant="text"
           :disabled="installing"
           @click.stop="emit('install', version)"
         >
-          <Loading v-if="installing" theme="spinner" />
+          <t-loading v-if="installing" theme="spinner" />
           <DownloadIcon v-else />
-        </Button>
+        </t-button>
       </template>
-    </Cell>
+    </t-cell>
   </div>
 </template>
 

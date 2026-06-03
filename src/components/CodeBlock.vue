@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { Button } from 'tdesign-mobile-vue'
-import { CopyIcon, CheckIcon } from 'tdesign-icons-vue-next'
+import { CheckIcon, CopyIcon } from 'tdesign-icons-vue-next'
 
 interface Props {
   code: string
@@ -41,7 +40,7 @@ const displayCode = computed(() => props.code ?? '')
 
 <template>
   <div class="code-block" role="region" aria-label="代码块">
-    <Button
+    <t-button
       class="copy-btn"
       variant="text"
       shape="circle"
@@ -51,7 +50,7 @@ const displayCode = computed(() => props.code ?? '')
         <template #icon>
             <component :is="copyIcon" />
         </template>
-    </Button>
+    </t-button>
 
     <pre class="code-pre"><code>{{ displayCode }}</code></pre>
   </div>

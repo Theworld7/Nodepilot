@@ -1,14 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from "vue";
-import {
-  Search,
-  Switch,
-  PullDownRefresh,
-  Loading,
-  Progress,
-  DialogPlugin as Dialog,
-} from "tdesign-mobile-vue";
 import { invoke } from "@tauri-apps/api/core";
+import { DialogPlugin } from "tdesign-mobile-vue";
 import { listen } from "@tauri-apps/api/event";
 import type { NodeVersion } from "../types";
 import type { UnlistenFn } from "@tauri-apps/api/event";
@@ -90,7 +83,7 @@ async function onActivate(v: NodeVersion) {
 
 async function onDelete(v: NodeVersion) {
   const confirmed = await new Promise<boolean>((resolve) => {
-    Dialog.confirm({
+    DialogPlugin.confirm({
       title: "确认删除",
       content: `确定删除 Node.js ${v.version}？`,
       confirmBtn: "删除",
@@ -160,19 +153,19 @@ onUnmounted(() => {
 
 <template>
   <div class="panel-scroll">
-    <PullDownRefresh v-model="refreshing" @refresh="onRefresh">
+    <t-pull-down-refresh v-model="refreshing" @refresh="onRefresh">
       <div class="panel">
         <div class="panel-head">
           <div class="panel-header">
             <div class="panel-title">Node.js 版本管理</div>
             <div class="lts-toggle">
               <span class="lts-label">仅 LTS</span>
-              <Switch v-model="showLtsOnly" size="small" />
+              <t-switch v-model="showLtsOnly" size="small" />
             </div>
           </div>
 
           <div class="search-wrapper">
-            <Search
+            <t-search
               v-model="searchValue"
               shape="round"
               size="small"
@@ -186,16 +179,16 @@ onUnmounted(() => {
           <div class="progress-version">
             正在安装 {{ installingVersion }}...
           </div>
-          <Progress :percentage="Math.round(installProgress * 10) / 10">
+          <t-progress :percentage="Math.round(installProgress * 10) / 10">
             <template #label>
               <span class="progress-pct-label">{{ installProgress.toFixed(1) }}%</span>
             </template>
-          </Progress>
+          </t-progress>
           <div class="progress-stage">{{ installStage }}</div>
         </div>
 
         <div v-if="loading" class="loading-state">
-          <Loading />
+          <t-loading />
         </div>
 
         <div v-else class="version-list">
@@ -211,7 +204,7 @@ onUnmounted(() => {
           />
         </div>
       </div>
-    </PullDownRefresh>
+    </t-pull-down-refresh>
   </div>
 </template>
 
