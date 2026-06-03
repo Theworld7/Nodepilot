@@ -6,8 +6,11 @@ use std::sync::{Arc, Mutex};
 
 use commands::AppState;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{Manager, WindowEvent};
+use tauri::Manager;
 use tauri_plugin_autostart::MacosLauncher;
+
+#[cfg(not(debug_assertions))]
+use tauri::WindowEvent;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -126,13 +129,23 @@ pub fn run() {
 
             let window = app.get_webview_window("main").unwrap();
 
-            let window_clone = window.clone();
-            window.on_window_event(move |event| {
-                if let WindowEvent::Focused(false) = event {
-                    let _ = window_clone.hide();
-                }
-            });
-            let _ = window.hide();
+            #[cfg(not(debug_assertions))]
+            {
+                let window_clone = window.clone();
+                window.on_window_event(move |event| {
+                    if let WindowEvent::Focused(false) = event {
+                        let _ = window_clone.hide();
+                    }
+                });
+            }
+            #[cfg(debug_assertions)]
+            {
+                let _ = window.show();
+            }
+            #[cfg(not(debug_assertions))]
+            {
+                let _ = window.hide();
+            }
 
             Ok(())
         })
