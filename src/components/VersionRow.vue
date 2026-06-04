@@ -31,6 +31,7 @@ function getStatusTheme(
 
 <template>
   <div class="version-row">
+    <!-- 版本信息单元格 — 点击已安装版本可快捷激活 -->
     <t-cell
       @click="
         version.installed && !version.active
@@ -38,22 +39,28 @@ function getStatusTheme(
           : undefined
       "
     >
+      <!-- 标题区：版本号 + 标签 -->
       <template #title>
         <div class="cell-title-row">
           <span class="version-name">{{ version.version }}</span>
+          <!-- LTS 标签 -->
           <t-tag
             v-if="version.lts"
             theme="warning"
             size="small"
             class="lts-tag"
           >LTS</t-tag>
+          <!-- 状态标签：使用中 / 已安装 / 可安装 -->
           <t-tag :theme="getStatusTheme(version)" size="small">
             {{ getStatusLabel(version) }}
           </t-tag>
         </div>
       </template>
+      <!-- 描述区：发布日期 -->
       <template #description>{{ version.date }}</template>
+      <!-- 操作区：按版本状态展示不同按钮 -->
       <template #note>
+        <!-- 状态一：已安装但未激活 → 激活 / 删除 -->
         <template v-if="version.installed && !version.active">
           <t-button
             size="extra-small"
@@ -74,6 +81,7 @@ function getStatusTheme(
             <DeleteIcon v-else />
           </t-button>
         </template>
+        <!-- 状态二：未安装 → 下载 -->
         <t-button
           v-else-if="!version.installed"
           size="extra-small"
@@ -84,6 +92,7 @@ function getStatusTheme(
           <t-loading v-if="installing" theme="spinner" />
           <DownloadIcon v-else />
         </t-button>
+        <!-- 状态三：已激活 → 无操作按钮 -->
       </template>
     </t-cell>
   </div>
