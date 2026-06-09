@@ -76,7 +76,6 @@ impl VersionManager {
             fetcher: VersionFetcher::new(cache_dir, http_client.clone(), fs.clone()),
             installer: VersionInstaller::new(
                 versions_dir.clone(),
-                http_client.clone(),
                 fs.clone(),
             ),
             activator: VersionActivator::new(

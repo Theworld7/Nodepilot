@@ -4,7 +4,6 @@ use std::time::Instant;
 
 use super::error::VersionManagerError;
 use super::event::{EventSink, VersionEvent};
-use crate::client::HttpClient;
 use crate::fs::FileSystem;
 
 pub struct VersionInstaller {
@@ -25,7 +24,6 @@ fn throttled_emit(sink: &mut dyn EventSink, event: VersionEvent, last_emit: &mut
 impl VersionInstaller {
     pub fn new(
         versions_dir: PathBuf,
-        _http_client: Arc<dyn HttpClient>,
         fs: Arc<dyn FileSystem>,
     ) -> Self {
         Self {
