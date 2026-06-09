@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "nodepilot",
   "version": "0.1.1",
-  "identifier": "com.nodepilot.app",
+  "identifier": "com.nodepilot",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5199",
