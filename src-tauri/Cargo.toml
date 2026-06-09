@@ -36,6 +36,7 @@ zip = "2"
 dirs = "6"
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "2"
+async-trait = "0.1"
 image = "0.24"
 imageproc = "0.23"
 rusttype = "0.9"

@@ -1,109 +1,96 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 
-use reqwest::Client;
-use serde_json;
-
+use super::error::VersionManagerError;
 use super::types::{NodeVersion, RemoteVersion};
+use crate::client::HttpClient;
+use crate::fs::FileSystem;
 
-const DEFAULT_SOURCE_URL: &str = "https://nodejs.org/dist/index.json";
 const CACHE_FILENAME: &str = "versions.json";
 
 pub struct VersionFetcher {
-    http_client: Client,
-    source_url: String,
+    http_client: Arc<dyn HttpClient>,
+    fs: Arc<dyn FileSystem>,
     cache_dir: PathBuf,
 }
 
 impl VersionFetcher {
-    pub fn new(cache_dir: PathBuf) -> Self {
+    pub fn new(
+        cache_dir: PathBuf,
+        http_client: Arc<dyn HttpClient>,
+        fs: Arc<dyn FileSystem>,
+    ) -> Self {
         Self {
-            http_client: Client::builder()
-                .user_agent("nodepilot/0.1.0")
-                .build()
-                .expect("Failed to create HTTP client"),
-            source_url: DEFAULT_SOURCE_URL.to_string(),
+            http_client,
+            fs,
             cache_dir,
         }
     }
 
-    pub fn set_source_url(&mut self, url: String) {
-        self.source_url = url;
-    }
-
-    pub fn cache_path(&self) -> PathBuf {
+    fn cache_path(&self) -> PathBuf {
         self.cache_dir.join(CACHE_FILENAME)
     }
 
-    pub async fn fetch_remote(&self) -> Result<Vec<RemoteVersion>, FetchError> {
-        let resp = self
-            .http_client
-            .get(&self.source_url)
-            .send()
-            .await
-            .map_err(|e| FetchError::Http(e.to_string()))?;
+    pub async fn fetch_remote(&self, source_url: &str) -> Result<Vec<RemoteVersion>, VersionManagerError> {
+        let resp = self.http_client.get(source_url).await.map_err(|e| {
+            VersionManagerError::Network(format!("failed to fetch version list: {e}"))
+        })?;
 
-        if !resp.status().is_success() {
-            return Err(FetchError::Http(format!("HTTP {}", resp.status())));
-        }
-
-        let versions: Vec<RemoteVersion> = resp
-            .json()
-            .await
-            .map_err(|e| FetchError::Parse(e.to_string()))?;
+        let versions: Vec<RemoteVersion> =
+            serde_json::from_slice(&resp.data).map_err(|e| {
+                VersionManagerError::Parse(format!("failed to parse version list: {e}"))
+            })?;
 
         Ok(versions)
     }
 
-    pub fn read_cache(&self) -> Result<Vec<NodeVersion>, FetchError> {
-        let data =
-            std::fs::read_to_string(self.cache_path()).map_err(|e| FetchError::Cache(e.to_string()))?;
-        let versions: Vec<NodeVersion> =
-            serde_json::from_str(&data).map_err(|e| FetchError::Parse(e.to_string()))?;
+    fn read_cache(&self) -> Result<Vec<NodeVersion>, VersionManagerError> {
+        let data = self
+            .fs
+            .read_to_string(&self.cache_path())
+            .map_err(|e| VersionManagerError::Io(e))?;
+        let versions: Vec<NodeVersion> = serde_json::from_str(&data).map_err(|e| {
+            VersionManagerError::Parse(format!("failed to parse cache: {e}"))
+        })?;
         Ok(versions)
     }
 
-    pub fn write_cache(&self, versions: &[NodeVersion]) -> Result<(), FetchError> {
-        if let Some(parent) = self.cache_path().parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| FetchError::Cache(e.to_string()))?;
-        }
+    fn write_cache(&self, versions: &[NodeVersion]) -> Result<(), VersionManagerError> {
         let data =
-            serde_json::to_string_pretty(versions).map_err(|e| FetchError::Cache(e.to_string()))?;
-        std::fs::write(self.cache_path(), data)
-            .map_err(|e| FetchError::Cache(e.to_string()))?;
-        Ok(())
+            serde_json::to_string_pretty(versions).map_err(|e| {
+                VersionManagerError::Parse(format!("failed to serialize cache: {e}"))
+            })?;
+        self.fs
+            .write(&self.cache_path(), data.as_bytes())
+            .map_err(VersionManagerError::Io)
     }
 
-    pub async fn fetch_or_cache(&self) -> Result<Vec<NodeVersion>, FetchError> {
-        match self.fetch_remote().await {
+    pub async fn fetch_or_cache(
+        &self,
+        source_url: &str,
+    ) -> Result<Vec<NodeVersion>, VersionManagerError> {
+        match self.fetch_remote(source_url).await {
             Ok(remote) => {
                 let versions: Vec<NodeVersion> = remote.into_iter().map(Into::into).collect();
                 if let Err(e) = self.write_cache(&versions) {
-                    log::warn!("Failed to write cache: {}", e);
+                    log::warn!("Failed to write cache: {e}");
                 }
                 Ok(versions)
             }
             Err(e) => {
-                log::warn!("Remote fetch failed ({}), falling back to cache", e);
+                log::warn!("Remote fetch failed ({e}), falling back to cache");
                 self.read_cache()
             }
         }
     }
 
-    pub async fn refresh(&self) -> Result<Vec<NodeVersion>, FetchError> {
-        let remote = self.fetch_remote().await?;
+    pub async fn refresh(
+        &self,
+        source_url: &str,
+    ) -> Result<Vec<NodeVersion>, VersionManagerError> {
+        let remote = self.fetch_remote(source_url).await?;
         let versions: Vec<NodeVersion> = remote.into_iter().map(Into::into).collect();
         self.write_cache(&versions)?;
         Ok(versions)
     }
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum FetchError {
-    #[error("HTTP error: {0}")]
-    Http(String),
-    #[error("Parse error: {0}")]
-    Parse(String),
-    #[error("Cache error: {0}")]
-    Cache(String),
 }

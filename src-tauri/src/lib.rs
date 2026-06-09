@@ -1,8 +1,10 @@
+mod client;
 mod commands;
+mod fs;
 mod tray;
 mod version;
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use commands::AppState;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -19,16 +21,18 @@ pub fn run() {
     let cache_dir = nodepilot_dir.join("cache");
     let versions_dir = nodepilot_dir.join("versions");
     let setup_flag = nodepilot_dir.join(".setup-done");
-
-    let activator =
-        version::VersionActivator::new(nodepilot_dir.clone(), versions_dir.clone());
-
     let config_path = nodepilot_dir.join("config.json");
+
+    let http_client = client::HttpClientProd::new().expect("Failed to create HTTP client");
+    let http_client: Arc<dyn client::HttpClient> = Arc::new(http_client);
+
+    let fs: Arc<dyn fs::FileSystem> = Arc::new(fs::FsProd);
 
     let source_url = if config_path.exists() {
         if let Ok(data) = std::fs::read_to_string(&config_path) {
             if let Ok(cfg) = serde_json::from_str::<commands::AppConfig>(&data) {
-                cfg.mirror_url.unwrap_or_else(|| "https://nodejs.org/dist/index.json".to_string())
+                cfg.mirror_url
+                    .unwrap_or_else(|| "https://nodejs.org/dist/index.json".to_string())
             } else {
                 "https://nodejs.org/dist/index.json".to_string()
             }
@@ -39,26 +43,20 @@ pub fn run() {
         "https://nodejs.org/dist/index.json".to_string()
     };
 
-    let mut fetcher = version::VersionFetcher::new(cache_dir);
-    fetcher.set_source_url(source_url.clone());
+    let manager = version::VersionManager::new(
+        nodepilot_dir.clone(),
+        versions_dir,
+        cache_dir,
+        http_client,
+        fs,
+        source_url,
+    );
 
-    let mut installer = version::VersionInstaller::new(versions_dir.clone());
-    installer.set_source_url(if source_url.ends_with('/') || source_url.contains(".json") {
-        let trimmed = source_url.trim_end_matches("index.json").trim_end_matches('/');
-        format!("{}/", trimmed)
-    } else {
-        source_url.clone() + "/"
-    });
-
-    let state = Arc::new(AppState {
-        fetcher,
-        installer,
-        activator,
-        deleter: version::VersionDeleter::new(versions_dir.clone(), nodepilot_dir.clone()),
+    let state = AppState {
+        manager,
         setup_flag,
         config_path,
-        source_url: Mutex::new(source_url),
-    });
+    };
 
     tauri::Builder::default()
         .manage(state)
@@ -89,8 +87,8 @@ pub fn run() {
             )?;
 
             let current_version = app
-                .state::<Arc<AppState>>()
-                .activator
+                .state::<AppState>()
+                .manager
                 .get_current_version()
                 .unwrap_or_else(|| "node".to_string());
 
@@ -99,8 +97,7 @@ pub fn run() {
             #[cfg(not(debug_assertions))]
             {
                 let _ = app.handle().plugin(
-                    tauri_plugin_updater::Builder::new()
-                        .build(),
+                    tauri_plugin_updater::Builder::new().build(),
                 );
             }
 

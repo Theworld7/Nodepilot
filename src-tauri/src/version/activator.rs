@@ -1,13 +1,23 @@
 use std::path::PathBuf;
+use std::sync::Arc;
+
+use super::error::VersionManagerError;
+use crate::fs::FileSystem;
 
 pub struct VersionActivator {
+    fs: Arc<dyn FileSystem>,
     nodepilot_dir: PathBuf,
     versions_dir: PathBuf,
 }
 
 impl VersionActivator {
-    pub fn new(nodepilot_dir: PathBuf, versions_dir: PathBuf) -> Self {
+    pub fn new(
+        nodepilot_dir: PathBuf,
+        versions_dir: PathBuf,
+        fs: Arc<dyn FileSystem>,
+    ) -> Self {
         Self {
+            fs,
             nodepilot_dir,
             versions_dir,
         }
@@ -23,8 +33,8 @@ impl VersionActivator {
 
     pub fn get_current_version(&self) -> Option<String> {
         let current = self.current_symlink();
-        if current.exists() {
-            if let Ok(target) = std::fs::read_link(&current) {
+        if self.fs.exists(&current) {
+            if let Ok(target) = self.fs.read_link(&current) {
                 if let Some(name) = target.file_name() {
                     return Some(name.to_string_lossy().to_string());
                 }
@@ -33,63 +43,42 @@ impl VersionActivator {
         None
     }
 
-    pub fn get_installed_versions(&self) -> Result<Vec<String>, ActivateError> {
-        if !self.versions_dir.exists() {
+    pub fn get_installed_versions(&self) -> Result<Vec<String>, VersionManagerError> {
+        if !self.fs.exists(&self.versions_dir) {
             return Ok(vec![]);
         }
         let mut versions = vec![];
-        for entry in std::fs::read_dir(&self.versions_dir)
-            .map_err(|e| ActivateError::Io(e.to_string()))?
-        {
-            let entry = entry.map_err(|e| ActivateError::Io(e.to_string()))?;
-            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                if let Some(name) = entry.file_name().to_str() {
-                    versions.push(name.to_string());
+        for entry in self.fs.read_dir(&self.versions_dir)? {
+                if self.fs.is_dir(&entry) {
+                    if let Some(name) = entry.file_name().and_then(|s| s.to_str()) {
+                        versions.push(name.to_string());
+                    }
                 }
-            }
         }
         Ok(versions)
     }
 
-    pub fn activate(&self, version: &str) -> Result<(), ActivateError> {
+    pub fn activate(&self, version: &str) -> Result<(), VersionManagerError> {
         let version_dir = self.version_dir(version);
-        if !version_dir.exists() {
-            return Err(ActivateError::NotFound(version.to_string()));
+        if !self.fs.exists(&version_dir) {
+            return Err(VersionManagerError::NotFound(version.to_string()));
         }
 
         let current = self.current_symlink();
 
-        // Use symlink_metadata to detect dangling symlinks (exists() returns
-        // false for broken links, but the symlink file itself is still there).
-        if let Ok(meta) = std::fs::symlink_metadata(&current) {
+        if let Ok(meta) = self.fs.symlink_metadata(&current) {
             if meta.file_type().is_symlink() {
-                std::fs::remove_file(&current)
-                    .map_err(|e| ActivateError::Io(e.to_string()))?;
+                self.fs.remove_file(&current)?;
             } else {
-                return Err(ActivateError::Io("current is not a symlink".to_string()));
+                return Err(VersionManagerError::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "current is not a symlink",
+                )));
             }
         }
 
-        #[cfg(unix)]
-        std::os::unix::fs::symlink(&version_dir, &current)
-            .map_err(|e| ActivateError::Io(e.to_string()))?;
-
-        #[cfg(windows)]
-        {
-            if std::os::windows::fs::symlink_dir(&version_dir, &current).is_err() {
-                std::os::windows::fs::symlink_dir(&version_dir, &current)
-                    .map_err(|e| ActivateError::Io(e.to_string()))?;
-            }
-        }
+        self.fs.symlink(&version_dir, &current)?;
 
         Ok(())
     }
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum ActivateError {
-    #[error("Version not found: {0}")]
-    NotFound(String),
-    #[error("IO error: {0}")]
-    Io(String),
 }

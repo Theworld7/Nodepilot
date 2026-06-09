@@ -1,13 +1,11 @@
 pub mod types;
+pub mod error;
+pub mod event;
 
 mod fetcher;
-pub use fetcher::VersionFetcher;
-
 mod installer;
-pub use installer::VersionInstaller;
-
 mod activator;
-pub use activator::VersionActivator;
-
 mod deleter;
-pub use deleter::VersionDeleter;
+
+mod manager;
+pub use manager::{VersionCommand, VersionManager, ExecuteOutput};
