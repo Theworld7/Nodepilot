@@ -22,7 +22,6 @@
   font-size: 14px;
   color-scheme: light dark;
   color: var(--text);
-  background: transparent;
 }
 
 /* Auto dark mode via system preference */
@@ -53,16 +52,16 @@
 
 body {
   margin: 0;
-  background: transparent;
+  background: var(--bg);
 }
 
 #app {
-  width: 375px;
-  height: 667px;
-  overflow-y: auto;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   -webkit-font-smoothing: antialiased;
-  border-radius: var(--radius);
-  background: transparent;
 }
 
 /* 全局滚动条 — 半透明毛玻璃风格 */

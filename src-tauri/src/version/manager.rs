@@ -76,6 +76,7 @@ impl VersionManager {
             fetcher: VersionFetcher::new(cache_dir, http_client.clone(), fs.clone()),
             installer: VersionInstaller::new(
                 versions_dir.clone(),
+                http_client.clone(),
                 fs.clone(),
             ),
             activator: VersionActivator::new(
@@ -116,7 +117,7 @@ impl VersionManager {
     pub async fn execute(
         &self,
         cmd: VersionCommand,
-        sink: &mut dyn EventSink,
+        sink: &dyn EventSink,
     ) -> Result<ExecuteOutput, VersionManagerError> {
         let (index_url, dist_url) = {
             let urls = self.urls.lock().unwrap();

@@ -13,6 +13,6 @@ pub enum VersionEvent {
     },
 }
 
-pub trait EventSink: Send {
-    fn emit(&mut self, event: VersionEvent);
+pub trait EventSink: Send + Sync {
+    fn emit(&self, event: VersionEvent);
 }

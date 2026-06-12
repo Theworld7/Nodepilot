@@ -1,5 +1,6 @@
 mod client;
 mod commands;
+mod error;
 mod fs;
 mod tray;
 mod version;
@@ -9,10 +10,8 @@ use std::sync::Arc;
 use commands::AppState;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::Manager;
-use tauri_plugin_autostart::MacosLauncher;
-
-#[cfg(not(debug_assertions))]
 use tauri::WindowEvent;
+use tauri_plugin_autostart::MacosLauncher;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -113,36 +112,21 @@ pub fn run() {
                     {
                         let app = tray.app_handle();
                         if let Some(window) = app.get_webview_window("main") {
-                            if window.is_visible().unwrap_or(false) {
-                                let _ = window.hide();
-                            } else {
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                            }
+                            let _ = window.show();
+                            let _ = window.set_focus();
                         }
                     }
                 })
                 .build(app)?;
 
             let window = app.get_webview_window("main").unwrap();
-
-            #[cfg(not(debug_assertions))]
-            {
-                let window_clone = window.clone();
-                window.on_window_event(move |event| {
-                    if let WindowEvent::Focused(false) = event {
-                        let _ = window_clone.hide();
-                    }
-                });
-            }
-            #[cfg(debug_assertions)]
-            {
-                let _ = window.show();
-            }
-            #[cfg(not(debug_assertions))]
-            {
-                let _ = window.hide();
-            }
+            let window_clone = window.clone();
+            window.on_window_event(move |event| {
+                if let WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = window_clone.hide();
+                }
+            });
 
             Ok(())
         })
