@@ -51,10 +51,15 @@ pub fn run() {
         source_url,
     );
 
+    let projects_path = nodepilot_dir.join("projects.json");
+
     let state = AppState {
         manager,
         setup_flag,
         config_path,
+        projects_path,
+        servers: std::sync::Mutex::new(std::collections::HashMap::new()),
+        log_buffers: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
     };
 
     tauri::Builder::default()
@@ -69,6 +74,14 @@ pub fn run() {
             commands::mark_setup_done,
             commands::get_config,
             commands::set_config,
+            commands::bind_project,
+            commands::get_project_bindings,
+            commands::unbind_project,
+            commands::read_package_json,
+            commands::detect_pm,
+            commands::start_dev_server,
+            commands::stop_dev_server,
+            commands::get_dev_server_logs,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -84,6 +97,7 @@ pub fn run() {
                     .macos_launcher(MacosLauncher::LaunchAgent)
                     .build(),
             )?;
+            app.handle().plugin(tauri_plugin_dialog::init())?;
 
             let current_version = app
                 .state::<AppState>()
@@ -130,6 +144,12 @@ pub fn run() {
 
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            if let tauri::RunEvent::Exit = event {
+                let state = app_handle.state::<commands::AppState>();
+                commands::cleanup_all_servers(state.inner());
+            }
+        });
 }

@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@tauri-apps/plugin-autostart": "^2.5.1",
+    "@tauri-apps/plugin-dialog": "^2.7.1",
     "@tauri-apps/plugin-updater": "^2.10.1",
     "tdesign-icons-vue-next": "^0.4.4",
     "tdesign-mobile-vue": "^1.14.1",

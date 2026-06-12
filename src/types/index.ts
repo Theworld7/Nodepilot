@@ -7,3 +7,9 @@ export interface NodeVersion {
   installed: boolean | null
   active: boolean | null
 }
+
+export interface ProjectInfo {
+  name: string
+  path: string
+  version: string
+}

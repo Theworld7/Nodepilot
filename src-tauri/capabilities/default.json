@@ -7,7 +7,10 @@
   ],
   "permissions": [
     "core:default",
+    "core:window:allow-create",
+    "core:webview:allow-create-webview-window",
     "autostart:default",
-    "updater:default"
+    "updater:default",
+    "dialog:default"
   ]
 }
