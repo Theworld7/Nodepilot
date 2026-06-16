@@ -54,6 +54,7 @@ pub fn run() {
     let projects_path = nodepilot_dir.join("projects.json");
 
     let state = AppState {
+        nodepilot_dir: nodepilot_dir.clone(),
         manager,
         setup_flag,
         config_path,

@@ -12,6 +12,7 @@ use crate::version::types::NodeVersion;
 use crate::version::{VersionCommand, ExecuteOutput};
 
 pub struct AppState {
+    pub nodepilot_dir: PathBuf,
     pub manager: crate::version::VersionManager,
     pub setup_flag: PathBuf,
     pub config_path: PathBuf,
@@ -312,9 +313,16 @@ pub async fn start_dev_server(
     let program = parts[0];
     let args: Vec<&str> = parts[1..].iter().copied().collect();
 
+    // 将 nodepilot 管理的 Node bin 目录加入 PATH，
+    // 避免打包应用因 PATH 受限而找不到 npm/pnpm/yarn 等命令
+    let nodepilot_bin = state.nodepilot_dir.join("current").join("bin");
+    let existing_path = std::env::var("PATH").unwrap_or_default();
+    let new_path = format!("{}:{}", nodepilot_bin.display(), existing_path);
+
     let mut child = tokio::process::Command::new(program)
         .args(&args)
         .current_dir(&project_dir)
+        .env("PATH", &new_path)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .process_group(0)
