@@ -14,7 +14,7 @@ use crate::version::{VersionCommand, ExecuteOutput};
 pub struct AppState {
     pub nodepilot_dir: PathBuf,
     pub manager: crate::version::VersionManager,
-    pub setup_flag: PathBuf,
+    pub auto_setup_flag: PathBuf,
     pub config_path: PathBuf,
     pub projects_path: PathBuf,
     pub servers: Mutex<HashMap<String, tokio::process::Child>>,
@@ -156,16 +156,10 @@ pub async fn delete_version(
 }
 
 #[tauri::command]
-pub async fn is_first_run(state: State<'_, AppState>) -> Result<bool, AppError> {
-    Ok(!state.setup_flag.exists())
-}
-
-#[tauri::command]
-pub async fn mark_setup_done(state: State<'_, AppState>) -> Result<(), AppError> {
-    if let Some(parent) = state.setup_flag.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| AppError::Io(e.to_string()))?;
-    }
-    std::fs::write(&state.setup_flag, b"1").map_err(|e| AppError::Io(e.to_string()))
+pub async fn auto_setup(state: State<'_, AppState>) -> Result<bool, AppError> {
+    crate::env_setup::setup(&state.nodepilot_dir)
+        .map(|_| true)
+        .map_err(|e| AppError::Setup(e.to_string()))
 }
 
 #[tauri::command]

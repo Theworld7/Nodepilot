@@ -12,6 +12,7 @@ pub enum AppError {
     Active(String),
     Io(String),
     Config(String),
+    Setup(String),
 }
 
 impl std::fmt::Display for AppError {
@@ -24,6 +25,7 @@ impl std::fmt::Display for AppError {
             AppError::Active(v) => write!(f, "cannot delete active version: {v}"),
             AppError::Io(msg) => write!(f, "I/O error: {msg}"),
             AppError::Config(msg) => write!(f, "config error: {msg}"),
+            AppError::Setup(msg) => write!(f, "setup error: {msg}"),
         }
     }
 }

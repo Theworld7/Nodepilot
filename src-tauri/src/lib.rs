@@ -1,5 +1,6 @@
 mod client;
 mod commands;
+mod env_setup;
 mod error;
 mod fs;
 mod tray;
@@ -19,7 +20,7 @@ pub fn run() {
     let nodepilot_dir = home.join(".nodepilot");
     let cache_dir = nodepilot_dir.join("cache");
     let versions_dir = nodepilot_dir.join("versions");
-    let setup_flag = nodepilot_dir.join(".setup-done");
+    let auto_setup_flag = nodepilot_dir.join(".auto-setup-done");
     let config_path = nodepilot_dir.join("config.json");
 
     let http_client = client::HttpClientProd::new().expect("Failed to create HTTP client");
@@ -56,7 +57,7 @@ pub fn run() {
     let state = AppState {
         nodepilot_dir: nodepilot_dir.clone(),
         manager,
-        setup_flag,
+        auto_setup_flag,
         config_path,
         projects_path,
         servers: std::sync::Mutex::new(std::collections::HashMap::new()),
@@ -71,8 +72,7 @@ pub fn run() {
             commands::install_version,
             commands::activate_version,
             commands::delete_version,
-            commands::is_first_run,
-            commands::mark_setup_done,
+            commands::auto_setup,
             commands::get_config,
             commands::set_config,
             commands::bind_project,
@@ -99,6 +99,40 @@ pub fn run() {
                     .build(),
             )?;
             app.handle().plugin(tauri_plugin_dialog::init())?;
+
+            // Auto environment setup on first launch
+            {
+                let nodepilot_dir = &app.state::<AppState>().nodepilot_dir;
+                if !env_setup::is_setup_done(nodepilot_dir) {
+                    loop {
+                        match env_setup::setup(nodepilot_dir) {
+                            Ok(()) => break,
+                            Err(e) => {
+                                let response = rfd::MessageDialog::new()
+                                    .set_title("环境自动配置")
+                                    .set_description(&format!(
+                                        "nodepilot 无法自动配置终端环境：\n\n{}\n\n请尝试以下操作后重试：\n1. 确认终端权限正常\n2. 关闭其他终端窗口\n\n是否重试？",
+                                        e
+                                    ))
+                                    .set_level(rfd::MessageLevel::Warning)
+                                    .set_buttons(rfd::MessageButtons::OkCancel)
+                                    .show();
+                                match response {
+                                    rfd::MessageDialogResult::Ok => continue, // User clicked "重试"
+                                    _ => {
+                                        // User clicked "跳过": write flag to avoid retrying
+                                        let _ = std::fs::write(
+                                            nodepilot_dir.join(".auto-setup-done"),
+                                            b"skipped",
+                                        );
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
             let current_version = app
                 .state::<AppState>()

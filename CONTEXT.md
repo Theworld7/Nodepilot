@@ -23,7 +23,7 @@ Root directory for all nodepilot data. Contains `versions/` and `current`.
 Houses each installed version in its own subdirectory, e.g. `~/.nodepilot/versions/v24.1.2/`.
 
 ### Current Symlink (`~/.nodepilot/current`)
-Symlink pointing to one of the version directories. The user adds `~/.nodepilot/current/bin` to their PATH.
+Symlink pointing to one of the version directories. `~/.nodepilot/current/bin` is injected into the system PATH automatically on first launch (see Automatic Environment Setup).
 
 ## User Interface
 
@@ -45,7 +45,16 @@ The remote registry from which the version list and binaries are fetched. Defaul
 Rust backend downloads the binary archive from the remote source, extracts it (tar.gz / zip), and places it under `~/.nodepilot/versions/`. Archive is deleted after extraction.
 
 ### Version Activation
-Rust backend updates the `~/.nodepilot/current` symlink to point to the target version's directory. User's PATH must include `~/.nodepilot/current/bin` (configured manually via setup guide).
+Rust backend updates the `~/.nodepilot/current` symlink to point to the target version's directory. PATH injection is handled automatically by the Automatic Environment Setup on first launch.
+
+### Automatic Environment Setup
+On first launch, the backend silently injects `~/.nodepilot/current/bin` into the system PATH via platform-specific mechanisms (macOS: launchd agent + shell rc modification; Windows: HKCU registry PATH). No manual configuration is required. Setup is tracked by `~/.nodepilot/.auto-setup-done` flag to avoid repeated attempts.
+
+### Competing Version Manager
+A pre-existing Node.js version manager on the user's system (e.g. nvm, fnm, volta, Homebrew Node). During Automatic Environment Setup, competing managers are detected and their shell initialization hooks are disabled (commented out in `.zshrc`/`.bashrc`/PowerShell Profile) to ensure nodepilot's version takes priority. These modifications are reversible on unsetup.
+
+### Environment Rollback
+If environment setup fails (e.g. file write error, invalid shell config), all modifications are automatically undone: launchd plist removed, registry entries deleted, and shell config comments reverted. A native dialog offers retry or skip.
 
 ### Global Package Migration
 Upon activation of a different version, offers to reinstall the global npm packages from the previously active version.
