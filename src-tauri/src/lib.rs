@@ -20,7 +20,6 @@ pub fn run() {
     let nodepilot_dir = home.join(".nodepilot");
     let cache_dir = nodepilot_dir.join("cache");
     let versions_dir = nodepilot_dir.join("versions");
-    let auto_setup_flag = nodepilot_dir.join(".auto-setup-done");
     let config_path = nodepilot_dir.join("config.json");
 
     let http_client = client::HttpClientProd::new().expect("Failed to create HTTP client");
@@ -57,7 +56,6 @@ pub fn run() {
     let state = AppState {
         nodepilot_dir: nodepilot_dir.clone(),
         manager,
-        auto_setup_flag,
         config_path,
         projects_path,
         servers: std::sync::Mutex::new(std::collections::HashMap::new()),
@@ -73,6 +71,10 @@ pub fn run() {
             commands::activate_version,
             commands::delete_version,
             commands::auto_setup,
+            commands::rollback_setup,
+            commands::is_auto_setup_done,
+            commands::get_setup_error,
+            commands::mark_setup_skipped,
             commands::get_config,
             commands::set_config,
             commands::bind_project,
@@ -100,36 +102,16 @@ pub fn run() {
             )?;
             app.handle().plugin(tauri_plugin_dialog::init())?;
 
-            // Auto environment setup on first launch
+            // Auto environment setup on first launch – try once silently.
+            // If it fails, the frontend will show a dialog after the webview is ready.
             {
                 let nodepilot_dir = &app.state::<AppState>().nodepilot_dir;
                 if !env_setup::is_setup_done(nodepilot_dir) {
-                    loop {
-                        match env_setup::setup(nodepilot_dir) {
-                            Ok(()) => break,
-                            Err(e) => {
-                                let response = rfd::MessageDialog::new()
-                                    .set_title("环境自动配置")
-                                    .set_description(&format!(
-                                        "nodepilot 无法自动配置终端环境：\n\n{}\n\n请尝试以下操作后重试：\n1. 确认终端权限正常\n2. 关闭其他终端窗口\n\n是否重试？",
-                                        e
-                                    ))
-                                    .set_level(rfd::MessageLevel::Warning)
-                                    .set_buttons(rfd::MessageButtons::OkCancel)
-                                    .show();
-                                match response {
-                                    rfd::MessageDialogResult::Ok => continue, // User clicked "重试"
-                                    _ => {
-                                        // User clicked "跳过": write flag to avoid retrying
-                                        let _ = std::fs::write(
-                                            nodepilot_dir.join(".auto-setup-done"),
-                                            b"skipped",
-                                        );
-                                        break;
-                                    }
-                                }
-                            }
-                        }
+                    if let Err(e) = env_setup::setup(nodepilot_dir) {
+                        // Store error so the frontend can retrieve it and prompt the user
+                        let error_path = nodepilot_dir.join(".auto-setup-error");
+                        let _ = std::fs::write(&error_path, e.to_string());
+                        log::warn!("auto environment setup failed: {e}");
                     }
                 }
             }

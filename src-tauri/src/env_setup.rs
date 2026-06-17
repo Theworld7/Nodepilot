@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 // ---------------------------------------------------------------------------
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum EnvSetupError {
     Io(String),
     Plist(String),

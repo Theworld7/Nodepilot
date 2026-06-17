@@ -105,7 +105,7 @@ async function handleDelete(v: NodeVersion) {
         </div>
 
         <div v-if="loading" class="loading-state">
-          <t-loading />
+          <t-loading theme="spinner" />
         </div>
 
         <div v-else class="version-list">

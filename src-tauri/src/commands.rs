@@ -14,7 +14,6 @@ use crate::version::{VersionCommand, ExecuteOutput};
 pub struct AppState {
     pub nodepilot_dir: PathBuf,
     pub manager: crate::version::VersionManager,
-    pub auto_setup_flag: PathBuf,
     pub config_path: PathBuf,
     pub projects_path: PathBuf,
     pub servers: Mutex<HashMap<String, tokio::process::Child>>,
@@ -160,6 +159,35 @@ pub async fn auto_setup(state: State<'_, AppState>) -> Result<bool, AppError> {
     crate::env_setup::setup(&state.nodepilot_dir)
         .map(|_| true)
         .map_err(|e| AppError::Setup(e.to_string()))
+}
+
+#[tauri::command]
+pub async fn rollback_setup(state: State<'_, AppState>) -> Result<(), AppError> {
+    crate::env_setup::rollback(&state.nodepilot_dir);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn is_auto_setup_done(state: State<'_, AppState>) -> Result<bool, AppError> {
+    Ok(crate::env_setup::is_setup_done(&state.nodepilot_dir))
+}
+
+#[tauri::command]
+pub async fn get_setup_error(state: State<'_, AppState>) -> Result<Option<String>, AppError> {
+    let error_path = state.nodepilot_dir.join(".auto-setup-error");
+    if error_path.exists() {
+        let content = std::fs::read_to_string(&error_path)
+            .map_err(|e| AppError::Io(e.to_string()))?;
+        Ok(Some(content))
+    } else {
+        Ok(None)
+    }
+}
+
+#[tauri::command]
+pub async fn mark_setup_skipped(state: State<'_, AppState>) -> Result<(), AppError> {
+    let flag_path = state.nodepilot_dir.join(".auto-setup-done");
+    std::fs::write(&flag_path, b"skipped").map_err(|e| AppError::Io(e.to_string()))
 }
 
 #[tauri::command]
