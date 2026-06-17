@@ -42,20 +42,20 @@ function confirmEdit(project: ProjectInfo) {
   }
 }
 
-function cancelEdit(project: ProjectInfo) {
+function cancelEdit() {
   editing.value = false
   nextTick(() => {
     if (nameEl.value) nameEl.value.textContent = originalName
   })
 }
 
-function onKeydown(e: KeyboardEvent, project: ProjectInfo) {
+function onKeydown(e: KeyboardEvent) {
   if (e.key === "Enter") {
     e.preventDefault()
     nameEl.value?.blur()
   } else if (e.key === "Escape") {
     e.preventDefault()
-    cancelEdit(project)
+    cancelEdit()
   }
 }
 </script>
@@ -72,7 +72,7 @@ function onKeydown(e: KeyboardEvent, project: ProjectInfo) {
             class="project-name"
             :contenteditable="editing"
             :spellcheck="false"
-            @keydown="onKeydown($event, project)"
+            @keydown="onKeydown($event)"
             @blur="confirmEdit(project)"
           >{{ project.name }}</span>
           <t-button
