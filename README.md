@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="./src-tauri/icons/icon.png" width="80" height="80" alt="nodepilot logo" />
+  <img src="./src-tauri/icons/icon.png" style="width: 80px; height: 80px;" alt="nodepilot logo" />
   <h1>nodepilot</h1>
   <p><strong>Node.js 版本管理器 · 图形界面</strong></p>
   <p>
