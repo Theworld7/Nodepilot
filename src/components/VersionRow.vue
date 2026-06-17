@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue"
 import { invoke } from "@tauri-apps/api/core"
-import { open } from "@tauri-apps/plugin-dialog"
+import { open, confirm } from "@tauri-apps/plugin-dialog"
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow"
 import type { NodeVersion, ProjectInfo } from "../types"
 import ProjectRow from "./ProjectRow.vue"
@@ -64,6 +64,33 @@ async function handleStop(p: ProjectInfo) {
     runningServers.value = next
   } catch (e) {
     console.error("stop dev server failed:", e)
+  }
+}
+
+async function handleUnbind(p: ProjectInfo) {
+  const ok = await confirm(
+    `确定要移除项目「${p.name}」的绑定吗？\n\n路径：${p.path}\n\n此操作不可撤销。`,
+    { title: "移除项目", kind: "warning", okLabel: "确认移除", cancelLabel: "取消" }
+  )
+  if (!ok) return
+  try {
+    await invoke("unbind_project", { version: props.version.version, path: p.path })
+    await loadProjects()
+  } catch (e) {
+    console.error("unbind project failed:", e)
+  }
+}
+
+async function handleUpdateName(p: ProjectInfo, newName: string) {
+  try {
+    await invoke("update_project_name", {
+      version: props.version.version,
+      path: p.path,
+      newName,
+    })
+    await loadProjects()
+  } catch (e) {
+    console.error("update project name failed:", e)
   }
 }
 
@@ -217,6 +244,8 @@ onMounted(loadProjects)
             @start="handleStart"
             @stop="handleStop"
             @open-log="handleOpenLog"
+            @unbind="handleUnbind"
+            @update-name="handleUpdateName"
           />
         </div>
       </t-collapse-panel>

@@ -30,7 +30,9 @@
 
 ## 🖼️ 截图
 
-![版本管理面板](./screenshots/version-list.png)
+<p align="center">
+  <img src="./screenshots/version-list.png" alt="版本管理面板" style="max-width: 50%; min-width: 300px; height: auto;" />
+</p>
 
 ## 🚀 快速开始
 

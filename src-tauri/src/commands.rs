@@ -279,6 +279,27 @@ pub fn unbind_project(
     std::fs::write(&state.projects_path, data).map_err(|e| AppError::Io(e.to_string()))
 }
 
+#[tauri::command]
+pub fn update_project_name(
+    state: State<'_, AppState>,
+    version: String,
+    path: String,
+    new_name: String,
+) -> Result<(), AppError> {
+    let mut projects = read_projects(&state.projects_path);
+    if let Some(p) = projects.iter_mut().find(|p| p.version == version && p.path == path) {
+        p.name = new_name;
+    } else {
+        return Err(AppError::NotFound("project binding not found".to_string()));
+    }
+    let data =
+        serde_json::to_string_pretty(&projects).map_err(|e| AppError::Config(e.to_string()))?;
+    if let Some(parent) = state.projects_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| AppError::Io(e.to_string()))?;
+    }
+    std::fs::write(&state.projects_path, data).map_err(|e| AppError::Io(e.to_string()))
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PackageJson {
     pub scripts: Option<HashMap<String, String>>,
