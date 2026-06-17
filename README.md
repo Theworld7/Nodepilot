@@ -30,43 +30,7 @@
 
 ## 🖼️ 截图
 
-<!-- TODO: 添加功能截图 -->
-
-<details>
-<summary><b>版本管理面板</b></summary>
-
-<!-- ![版本列表](./screenshots/version-list.png) -->
-
-版本列表占位 — 展示版本号、LTS 标签、状态标签和操作按钮
-
-</details>
-
-<details>
-<summary><b>项目绑定与开发服务</b></summary>
-
-<!-- ![项目绑定](./screenshots/project-bind.png) -->
-
-项目绑定占位 — 折叠面板内展示绑定项目、启动/停止/日志按钮
-
-</details>
-
-<details>
-<summary><b>Dev Server 日志窗口</b></summary>
-
-<!-- ![日志面板](./screenshots/log-view.png) -->
-
-日志窗口占位 — 680×480 独立窗口，实时滚动输出
-
-</details>
-
-<details>
-<summary><b>设置引导</b></summary>
-
-<!-- ![设置引导](./screenshots/setup-guide.png) -->
-
-首次运行设置占位 — PATH 配置引导
-
-</details>
+![版本管理面板](./screenshots/version-list.png)
 
 ## 🚀 快速开始
 
@@ -76,21 +40,11 @@
 
 ### 首次使用
 
-安装后启动应用，会弹出设置引导：
+首次启动时，nodepilot 会自动接管系统 Node.js 环境：
 
-1. 将以下命令添加到你的 shell 配置文件（`.zshrc` / `.bashrc`）中：
-
-   ```bash
-   export PATH="$HOME/.nodepilot/current/bin:$PATH"
-   ```
-
-2. 重新加载配置：
-
-   ```bash
-   source ~/.zshrc
-   ```
-
-3. 点击"我已设置完成"，然后就可以通过托盘图标管理 Node.js 版本了。
+1. 启动应用，无需任何手动配置
+2. 应用自动将 `~/.nodepilot/current/bin` 注入系统 PATH
+3. 打开新终端，`node` 命令即指向 nodepilot 管理的版本
 
 ## 🎯 使用场景
 
@@ -124,7 +78,6 @@ nodepilot/
 │   ├── main.ts
 │   ├── panels/
 │   │   ├── VersionListPanel.vue      # 版本列表面板
-│   │   ├── SetupGuide.vue           # 首次设置引导
 │   │   └── LogView.vue              # Dev Server 日志窗口
 │   ├── components/
 │   │   ├── VersionRow.vue           # 版本条目（含折叠面板）
@@ -141,6 +94,7 @@ nodepilot/
 │       ├── main.rs               # 入口
 │       ├── lib.rs                # Tauri 应用启动
 │       ├── commands.rs           # IPC 命令
+│       ├── env_setup.rs          # 自动环境配置（PATH 注入）
 │       ├── client.rs             # HTTP 客户端（含 test mock）
 │       ├── fs.rs                 # 文件系统抽象（含 test mock）
 │       ├── error.rs              # 统一错误类型 AppError
@@ -156,6 +110,8 @@ nodepilot/
 │           ├── activator.rs      # 符号链接切换
 │           ├── deleter.rs        # 删除版本
 │           └── tests.rs          # 单元测试
+├── screenshots/                  # 截图
+│   └── version-list.png
 ├── docs/
 │   ├── prd.md
 │   └── adr/
@@ -216,14 +172,6 @@ pnpm tauri build
 - [ADR-0002](docs/adr/0002-popup-window-panel.md) — 弹出式面板（已被 ADR-0004 替代）
 - [ADR-0003](docs/adr/0003-dynamic-tray-icon.md) — 动态托盘图标显示版本号
 - [ADR-0004](docs/adr/0004-regular-desktop-window.md) — 传统桌面窗口替代弹出面板
-
-## 📝 待实现
-
-- [ ] Windows 平台全面测试与优化
-- [ ] 自动更新（Tauri updater 插件已集成，待配置签名）
-- [ ] 更多镜像源预设
-- [ ] 项目绑定详情编辑（自定义项目名）
-- [ ] 版本自动切换（根据项目 .nvmrc / .node-version）
 
 ## 🤝 贡献
 
