@@ -47,6 +47,16 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "installerIcon": "icons/icon.ico",
+        "startMenuFolder": "nodepilot"
+      },
+      "wix": {
+        "language": "zh-CN"
+      }
+    },
     "android": {
       "debugApplicationIdSuffix": ".debug"
     }

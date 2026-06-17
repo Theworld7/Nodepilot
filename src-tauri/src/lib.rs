@@ -12,6 +12,7 @@ use commands::AppState;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::Manager;
 use tauri::WindowEvent;
+#[cfg(target_os = "macos")]
 use tauri_plugin_autostart::MacosLauncher;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -96,11 +97,14 @@ pub fn run() {
                 )?;
             }
 
-            app.handle().plugin(
-                tauri_plugin_autostart::Builder::default()
-                    .macos_launcher(MacosLauncher::LaunchAgent)
-                    .build(),
-            )?;
+            {
+                let mut autostart = tauri_plugin_autostart::Builder::default();
+                #[cfg(target_os = "macos")]
+                {
+                    autostart = autostart.macos_launcher(MacosLauncher::LaunchAgent);
+                }
+                app.handle().plugin(autostart.build())?;
+            }
             app.handle().plugin(tauri_plugin_dialog::init())?;
 
             // Auto environment setup on first launch – try once silently.

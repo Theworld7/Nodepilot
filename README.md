@@ -30,8 +30,16 @@
 
 ## 🖼️ 截图
 
+**版本管理面板** — 查看可用版本、安装/切换/删除操作、搜索过滤与 LTS 筛选
+
 <p align="center">
   <img src="./screenshots/version-list.png" alt="版本管理面板" style="max-width: 50%; min-width: 300px; height: auto;" />
+</p>
+
+**项目管理** — 折叠面板内展示绑定的项目，支持一键启动/停止开发服务、查看日志、编辑别名与移除绑定
+
+<p align="center">
+  <img src="./screenshots/project-management-overview.png" alt="项目管理" style="max-width: 50%; min-width: 300px; height: auto;" />
 </p>
 
 ## 🚀 快速开始
