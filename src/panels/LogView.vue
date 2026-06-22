@@ -11,24 +11,45 @@ const projectName = params.get("name") || "项目"
 const logs = ref<string[]>([])
 const logContainer = ref<HTMLElement | null>(null)
 let unlisten: UnlistenFn | null = null
+let pollTimer: ReturnType<typeof setInterval> | null = null
 
 onMounted(async () => {
+  // 先注册事件监听，避免 get_logs 和 listen 之间的窗口期丢失事件
+  try {
+    unlisten = await listen<{ path: string; line: string }>("dev_server_log", (event) => {
+      if (event.payload.path === projectPath) {
+        logs.value.push(event.payload.line)
+      }
+    })
+  } catch (e) {
+    console.error("listen dev_server_log failed, falling back to polling:", e)
+    unlisten = null
+    // 降级：轮询 get_dev_server_logs（2s 间隔）
+    pollTimer = setInterval(async () => {
+      try {
+        const current = await invoke<string[]>("get_dev_server_logs", { path: projectPath })
+        const seen = new Set(logs.value)
+        for (const line of current) {
+          if (!seen.has(line)) {
+            logs.value.push(line)
+          }
+        }
+      } catch (_) { /* ignore poll errors */ }
+    }, 2000)
+  }
+
+  // 再拉取已缓冲的历史日志
   try {
     const initial = await invoke<string[]>("get_dev_server_logs", { path: projectPath })
     logs.value = initial
   } catch (e) {
     console.error("load logs failed:", e)
   }
-
-  unlisten = await listen<{ path: string; line: string }>("dev_server_log", (event) => {
-    if (event.payload.path === projectPath) {
-      logs.value.push(event.payload.line)
-    }
-  })
 })
 
 onUnmounted(() => {
   if (unlisten) unlisten()
+  if (pollTimer) clearInterval(pollTimer)
 })
 
 watch(logs, () => {
@@ -37,7 +58,7 @@ watch(logs, () => {
       logContainer.value.scrollTop = logContainer.value.scrollHeight
     }
   })
-})
+}, { deep: true })
 </script>
 
 <template>

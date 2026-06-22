@@ -82,6 +82,7 @@ pub fn run() {
             commands::get_project_bindings,
             commands::unbind_project,
             commands::update_project_name,
+            commands::update_project_config,
             commands::read_package_json,
             commands::detect_pm,
             commands::start_dev_server,

@@ -30,6 +30,10 @@ pub struct ProjectBinding {
     pub version: String,
     pub name: String,
     pub path: String,
+    #[serde(default)]
+    pub default_script: Option<String>,
+    #[serde(default)]
+    pub command_prefix: Option<String>,
 }
 
 struct TauriEventSink<'a> {
@@ -246,6 +250,8 @@ pub fn bind_project(
         version,
         name,
         path,
+        default_script: None,
+        command_prefix: None,
     });
     let data =
         serde_json::to_string_pretty(&projects).map_err(|e| AppError::Config(e.to_string()))?;
@@ -289,6 +295,29 @@ pub fn update_project_name(
     let mut projects = read_projects(&state.projects_path);
     if let Some(p) = projects.iter_mut().find(|p| p.version == version && p.path == path) {
         p.name = new_name;
+    } else {
+        return Err(AppError::NotFound("project binding not found".to_string()));
+    }
+    let data =
+        serde_json::to_string_pretty(&projects).map_err(|e| AppError::Config(e.to_string()))?;
+    if let Some(parent) = state.projects_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| AppError::Io(e.to_string()))?;
+    }
+    std::fs::write(&state.projects_path, data).map_err(|e| AppError::Io(e.to_string()))
+}
+
+#[tauri::command]
+pub fn update_project_config(
+    state: State<'_, AppState>,
+    version: String,
+    path: String,
+    default_script: Option<String>,
+    command_prefix: Option<String>,
+) -> Result<(), AppError> {
+    let mut projects = read_projects(&state.projects_path);
+    if let Some(p) = projects.iter_mut().find(|p| p.version == version && p.path == path) {
+        p.default_script = default_script;
+        p.command_prefix = command_prefix;
     } else {
         return Err(AppError::NotFound("project binding not found".to_string()));
     }
@@ -353,14 +382,72 @@ pub async fn start_dev_server(
         return Err(AppError::Config("empty command".to_string()));
     }
 
-    let program = parts[0];
-    let args: Vec<&str> = parts[1..].iter().copied().collect();
+    // 打包应用双击启动时，子进程 stdout/stderr 是管道而非 TTY，
+    // 系统默认全缓冲（约 8KB）。stdbuf 只影响直接子进程，孙进程（如 npm → vite）
+    // 继承管道 fd 后仍会全缓冲。使用 PTY 包装，让整个进程树认为连接了终端 → 行缓冲。
+    // macOS: 内置 script -q /dev/null <命令>
+    // Linux: stdbuf -o0 -e0 <命令> 作为降级（不覆盖孙进程，但至少子进程无缓冲）
+    let pty_program;
+    let use_pty: bool;
+    #[cfg(target_os = "macos")]
+    {
+        pty_program = "/usr/bin/script";
+        use_pty = std::path::Path::new(pty_program).exists();
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        pty_program = "";
+        use_pty = false;
+    }
+
+    let (program, args): (&str, Vec<&str>) = if use_pty {
+        ("script", {
+            let mut a = vec!["-q", "/dev/null", parts[0]];
+            a.extend(&parts[1..]);
+            a
+        })
+    } else {
+        // 降级：stdbuf 至少让直接子进程无缓冲
+        let stdbuf_path = "/usr/bin/stdbuf";
+        let has_stdbuf = std::path::Path::new(stdbuf_path).exists();
+        if has_stdbuf {
+            ("stdbuf", {
+                let mut a = vec!["-o0", "-e0", parts[0]];
+                a.extend(&parts[1..]);
+                a
+            })
+        } else {
+            (parts[0], parts[1..].iter().copied().collect())
+        }
+    };
 
     // 将 nodepilot 管理的 Node bin 目录加入 PATH，
     // 避免打包应用因 PATH 受限而找不到 npm/pnpm/yarn 等命令
     let nodepilot_bin = state.nodepilot_dir.join("current").join("bin");
     let existing_path = std::env::var("PATH").unwrap_or_default();
-    let new_path = format!("{}:{}", nodepilot_bin.display(), existing_path);
+
+    // 注入常见开发工具路径，解决打包应用 PATH 受限问题
+    // 例如 tauri CLI 需要 cargo，Homebrew 工具等
+    let home = dirs::home_dir().unwrap_or_default();
+    let extra_paths = [
+        home.join(".cargo/bin"),
+        PathBuf::from("/opt/homebrew/bin"),
+        PathBuf::from("/opt/homebrew/sbin"),
+        PathBuf::from("/usr/local/bin"),
+        PathBuf::from("/usr/local/sbin"),
+    ];
+    let extra = extra_paths
+        .iter()
+        .filter(|p| p.exists())
+        .map(|p| p.display().to_string())
+        .collect::<Vec<_>>()
+        .join(":");
+
+    let new_path = if extra.is_empty() {
+        format!("{}:{}", nodepilot_bin.display(), existing_path)
+    } else {
+        format!("{}:{}:{}", nodepilot_bin.display(), extra, existing_path)
+    };
 
     let mut child = tokio::process::Command::new(program)
         .args(&args)

@@ -36,16 +36,27 @@ async function loadProjects() {
 async function handleStart(p: ProjectInfo) {
   try {
     startingServers.value = new Set(startingServers.value).add(p.path)
-    const pkg = await invoke<{ scripts?: Record<string, string> }>("read_package_json", {
-      path: p.path,
-    })
-    if (!pkg?.scripts?.dev) {
-      console.error("no dev script in package.json")
-      return
+
+    let script = p.default_script || undefined
+    // 未配置时 fallback 到 package.json 的 dev 脚本
+    if (!script) {
+      const pkg = await invoke<{ scripts?: Record<string, string> }>("read_package_json", {
+        path: p.path,
+      })
+      if (!pkg?.scripts?.dev) {
+        console.error("no dev script in package.json")
+        return
+      }
+      script = pkg.scripts.dev
     }
+
     const pm = await invoke<string>("detect_pm", { path: p.path })
-    const command = pm === "npm" ? `npm run ${pkg.scripts.dev}` : `${pm} ${pkg.scripts.dev}`
-    await invoke("start_dev_server", { path: p.path, command })
+    const prefix = p.command_prefix ? `${p.command_prefix} ` : ""
+    const cmd = pm === "npm"
+      ? `npm run ${prefix}${script}`
+      : `${pm} ${prefix}${script}`
+
+    await invoke("start_dev_server", { path: p.path, command: cmd })
     runningServers.value = new Set(runningServers.value).add(p.path)
   } catch (e) {
     console.error("start dev server failed:", e)
@@ -246,6 +257,7 @@ onMounted(loadProjects)
             @open-log="handleOpenLog"
             @unbind="handleUnbind"
             @update-name="handleUpdateName"
+            @update-config="loadProjects"
           />
         </div>
       </t-collapse-panel>
