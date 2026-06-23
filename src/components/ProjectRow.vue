@@ -185,7 +185,7 @@ function cancelSettings() {
           variant="text"
           disabled
         >
-          <t-loading theme="spinner" />
+          <LoadingSpinner />
         </t-button>
         <template v-else>
           <t-button
@@ -220,7 +220,7 @@ function cancelSettings() {
     <t-drawer v-model:visible="showSettings" placement="bottom" header="项目配置">
       <!-- 加载中 -->
       <div v-if="loadingScripts" class="settings-loading">
-        <t-loading theme="spinner" />
+        <LoadingSpinner />
       </div>
 
       <t-form v-else :data="formData" label-align="top" class="settings-form">

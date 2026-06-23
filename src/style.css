@@ -108,21 +108,3 @@ body {
   background: rgba(255, 255, 255, 0.22);
 }
 
-/* TDesign Loading WebKit 兼容修复
-   - transform-origin: center 解决 SVG 绕左上角公转
-   - 显式 1em 确保从父元素 font-size 继承尺寸
-*/
-.t-icon-loading {
-  transform-origin: center center;
-}
-
-.t-loading .t-icon-loading {
-  width: 1em;
-  height: 1em;
-}
-
-.t-loading--center {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}

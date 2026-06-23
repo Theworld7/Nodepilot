@@ -241,7 +241,7 @@ onMounted(loadProjects);
                   :disabled="deleting"
                   @click.stop="emit('delete', version)"
                 >
-                  <t-loading v-if="deleting" theme="spinner" />
+                  <LoadingSpinner v-if="deleting" />
                   <DeleteIcon v-else />
                 </t-button>
               </template>
@@ -254,7 +254,7 @@ onMounted(loadProjects);
               :disabled="installing"
               @click.stop="emit('install', version)"
             >
-              <t-loading v-if="installing" theme="spinner" />
+              <LoadingSpinner v-if="installing" />
               <DownloadIcon v-else />
             </t-button>
           </div>

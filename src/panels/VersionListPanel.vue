@@ -76,7 +76,7 @@ async function handleDelete(v: NodeVersion) {
                 :disabled="refreshing"
                 @click="onRefresh"
               >
-                <t-loading v-if="refreshing" />
+                <LoadingSpinner v-if="refreshing" />
                 <RefreshIcon v-else />
               </t-button>
               <t-button
@@ -116,7 +116,7 @@ async function handleDelete(v: NodeVersion) {
         </div>
 
         <div v-if="loading" class="loading-state">
-          <t-loading size="32px" />
+          <LoadingSpinner size="32px" />
         </div>
 
         <div v-else class="version-list">
