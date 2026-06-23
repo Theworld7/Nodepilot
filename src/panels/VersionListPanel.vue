@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
-import { DialogPlugin } from "tdesign-vue-next";
 import type { NodeVersion } from "../types";
 import VersionRow from "../components/VersionRow.vue";
 import { useTheme } from "../composables/useTheme";
@@ -40,19 +39,24 @@ const filteredVersions = computed(() => {
   return list;
 });
 
-async function handleDelete(v: NodeVersion) {
-  const confirmed = await new Promise<boolean>((resolve) => {
-    DialogPlugin.confirm({
-      header: "确认删除",
-      body: `确定删除 Node.js ${v.version}？`,
-      confirmBtn: "删除",
-      cancelBtn: "取消",
-      onConfirm: () => resolve(true),
-      onClose: () => resolve(false),
-    });
-  });
-  if (!confirmed) return;
-  onDelete(v);
+// 删除确认对话框状态
+const deleteDialogVisible = ref(false);
+const deleteTarget = ref<NodeVersion | null>(null);
+
+function openDeleteDialog(v: NodeVersion) {
+  deleteTarget.value = v;
+  deleteDialogVisible.value = true;
+}
+
+function confirmDelete() {
+  deleteDialogVisible.value = false;
+  if (deleteTarget.value) {
+    onDelete(deleteTarget.value);
+  }
+}
+
+function cancelDelete() {
+  deleteDialogVisible.value = false;
 }
 </script>
 
@@ -128,11 +132,26 @@ async function handleDelete(v: NodeVersion) {
             :deleting="deletingVersion === v.version"
             @install="onInstall"
             @activate="onActivate"
-            @delete="handleDelete"
+            @delete="openDeleteDialog"
           />
         </div>
       </div>
     </div>
+
+    <t-dialog
+      v-model:visible="deleteDialogVisible"
+      header="确认删除"
+      :width="'calc(100vw - 48px)'"
+      :confirm-btn="{ content: '删除', theme: 'danger' }"
+      cancel-btn="取消"
+      @confirm="confirmDelete"
+      @cancel="cancelDelete"
+      @close="cancelDelete"
+    >
+      <template v-if="deleteTarget">
+        确定删除 Node.js {{ deleteTarget.version }}？
+      </template>
+    </t-dialog>
   </div>
 </template>
 
