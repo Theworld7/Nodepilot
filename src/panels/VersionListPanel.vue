@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
-import { DialogPlugin } from "tdesign-mobile-vue";
+import { DialogPlugin } from "tdesign-vue-next";
 import type { NodeVersion } from "../types";
 import VersionRow from "../components/VersionRow.vue";
 import { useTheme } from "../composables/useTheme";
@@ -43,8 +43,8 @@ const filteredVersions = computed(() => {
 async function handleDelete(v: NodeVersion) {
   const confirmed = await new Promise<boolean>((resolve) => {
     DialogPlugin.confirm({
-      title: "确认删除",
-      content: `确定删除 Node.js ${v.version}？`,
+      header: "确认删除",
+      body: `确定删除 Node.js ${v.version}？`,
       confirmBtn: "删除",
       cancelBtn: "取消",
       onConfirm: () => resolve(true),
@@ -58,7 +58,7 @@ async function handleDelete(v: NodeVersion) {
 
 <template>
   <div class="panel-scroll">
-    <t-pull-down-refresh v-model="refreshing" @refresh="onRefresh">
+    <div class="panel-scroll">
       <div class="panel">
         <div class="panel-head">
           <div class="panel-header">
@@ -66,13 +66,22 @@ async function handleDelete(v: NodeVersion) {
             <div class="header-actions">
               <div class="lts-toggle">
                 <span class="lts-label">仅 LTS</span>
-                <t-switch v-model="showLtsOnly" size="small" />
+                <t-switch v-model="showLtsOnly" />
               </div>
               <t-divider layout="vertical" />
               <t-button
-                class="theme-btn"
+                class="refresh-btn"
                 shape="circle"
-                size="extra-small"
+                variant="text"
+                :disabled="refreshing"
+                @click="onRefresh"
+              >
+                <t-loading v-if="refreshing" />
+                <RefreshIcon v-else />
+              </t-button>
+              <t-button
+                shape="circle"
+                variant="text"
                 @click="toggleTheme"
               >
                 <ModeDarkFilledIcon v-if="!isDark" />
@@ -82,13 +91,15 @@ async function handleDelete(v: NodeVersion) {
           </div>
 
           <div class="search-wrapper">
-            <t-search
+            <t-input
               v-model="searchValue"
-              shape="round"
-              size="small"
               placeholder="搜索主版本号，如 24"
               clearable
-            />
+            >
+              <template #prefix-icon>
+                <SearchIcon />
+              </template>
+            </t-input>
           </div>
         </div>
 
@@ -105,7 +116,7 @@ async function handleDelete(v: NodeVersion) {
         </div>
 
         <div v-if="loading" class="loading-state">
-          <t-loading theme="spinner" />
+          <t-loading size="32px" />
         </div>
 
         <div v-else class="version-list">
@@ -121,17 +132,13 @@ async function handleDelete(v: NodeVersion) {
           />
         </div>
       </div>
-    </t-pull-down-refresh>
+    </div>
   </div>
 </template>
 
 <style scoped>
 .panel-scroll {
   height: 100%;
-}
-
-.panel-scroll :deep(.t-pull-down-refresh) {
-  overflow: visible;
 }
 
 .panel {
@@ -182,22 +189,13 @@ async function handleDelete(v: NodeVersion) {
   height: 16px;
 }
 
-.theme-btn {
-  color: var(--text);
-}
-
-.theme-btn :deep(.t-button__content) {
-  font-size: 18px;
-  transform: translateY(-1px);
-}
-
 .search-wrapper {
   padding: 0 8px;
   margin-bottom: 8px;
 }
 
-.search-wrapper :deep(.t-search__input-box) {
-  background-color: var(--input-bg);
+.search-wrapper :deep(.t-input) {
+  border-radius: 20px;
 }
 
 .loading-state {

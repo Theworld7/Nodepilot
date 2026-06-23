@@ -13,7 +13,7 @@
     "macOSPrivateApi": true,
     "windows": [
       {
-        "title": "nodepilot",
+        "title": "Nodepilot",
         "width": 375,
         "height": 667,
         "resizable": false,

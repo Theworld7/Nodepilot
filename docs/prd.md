@@ -216,5 +216,5 @@ No existing tests in the codebase yet. Test files should be placed alongside sou
 - The app targets macOS and Windows initially. Linux is not in scope for v1.
 - On Windows, the app must request administrator privileges for symlink creation. This affects the installer packaging (NSIS) and the app manifest.
 - The tray icon with embedded version number requires a font rendering library in Rust. Consider `imageproc` + `rusttype` for macOS (.png) and `ico` crate for Windows (.ico).
-- The phone-sized panel (375×667) is an opinionated UX choice to keep the UI focused and avoid feature creep toward a full-window app. This size fits `tdesign-mobile-vue` component proportions naturally.
+- The desktop window (500×700) is an opinionated UX choice to keep the UI focused while providing comfortable space for desktop components. This size fits `tdesign-vue-next` component proportions naturally.
 - The name of the base directory (`~/.nodepilot/`) follows the nvm convention of `~/.nvm/`. This may conflict if the user already uses nvm — consider detecting an existing `.nvm` on first run and warning the user.

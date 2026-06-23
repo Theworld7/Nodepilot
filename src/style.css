@@ -18,6 +18,10 @@
   --radius-sm: 8px;
   --radius-lg: 16px;
 
+  /* Bridge tdesign-vue-next Design Tokens */
+  --brand: var(--td-brand-color, #0052d9);
+  --brand-active: var(--td-brand-color-active, #0034b5);
+
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: 14px;
   color-scheme: light dark;
@@ -48,6 +52,9 @@
   --text: #9ca3af;
   --text-h: #f3f4f6;
   --border: #2e303a;
+
+  --brand: var(--td-brand-color, #4582e6);
+  --brand-active: var(--td-brand-color-active, #699ef5);
 }
 
 body {
@@ -99,4 +106,23 @@ body {
 
 :root.dark ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.22);
+}
+
+/* TDesign Loading WebKit 兼容修复
+   - transform-origin: center 解决 SVG 绕左上角公转
+   - 显式 1em 确保从父元素 font-size 继承尺寸
+*/
+.t-icon-loading {
+  transform-origin: center center;
+}
+
+.t-loading .t-icon-loading {
+  width: 1em;
+  height: 1em;
+}
+
+.t-loading--center {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }

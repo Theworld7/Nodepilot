@@ -31,7 +31,7 @@ Symlink pointing to one of the version directories. `~/.nodepilot/current/bin` i
 Status bar / system tray icon showing the active Node.js major version number (e.g. "24"). Clicking opens the panel.
 
 ### Panel
-A small popup window (phone-sized, ~375×667) containing the version list. Implemented as a Tauri child window with Vue components.
+A compact desktop window (500×700) containing the version list. Implemented as a Tauri window with Vue components.
 
 ### Version List
 Flat list of all known Node.js versions, filterable by major version number. Shows version number, install status, release date, and LTS label.
@@ -65,7 +65,7 @@ Upon activation of a different version, offers to reinstall the global npm packa
 Rust (Tauri backend) owns all version management logic — listing, downloading, installing, switching, deleting. Communicates progress to the UI via Tauri events.
 
 ### Frontend
-Vue 3 + tdesign-mobile-vue in a phone-sized popup window. Communicates with Rust via Tauri IPC (invoke commands + event listeners).
+Vue 3 + tdesign-vue-next in a desktop window. Communicates with Rust via Tauri IPC (invoke commands + event listeners).
 
 ### State & Caching
 Version list is cached locally as JSON. On panel open, shows cached data immediately and refreshes in the background.

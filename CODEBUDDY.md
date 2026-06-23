@@ -37,7 +37,7 @@ cd src-tauri && cargo clippy
 
 ### 整体架构
 
-nodepilot 是一个桌面端 Node.js 版本管理器（GUI），基于 **Tauri 2** 构建。Rust 后端直接管理所有版本逻辑（获取列表、下载安装、符号链接切换、删除），Vue 3 前端通过 Tauri IPC（`invoke` + event listen）与之通信。UI 使用 tdesign-mobile-vue 组件库，窗口为手机尺寸 (~375×667)，常驻系统托盘。
+nodepilot 是一个桌面端 Node.js 版本管理器（GUI），基于 **Tauri 2** 构建。Rust 后端直接管理所有版本逻辑（获取列表、下载安装、符号链接切换、删除），Vue 3 前端通过 Tauri IPC（`invoke` + event listen）与之通信。UI 使用 tdesign-vue-next 组件库，窗口为手机尺寸 (~375×667)，常驻系统托盘。
 
 ### 数据目录
 
@@ -94,7 +94,7 @@ nodepilot 是一个桌面端 Node.js 版本管理器（GUI），基于 **Tauri 2
   - `useVersionManager.ts` — 封装所有 Tauri IPC 调用（`invoke`）和 event 监听，提供响应式状态
   - `useTheme.ts` — 明暗主题切换
 - **`types/index.ts`** — `NodeVersion`、`ProjectInfo` 接口定义
-- **`style.css`** — 全局 CSS 变量（明暗双主题），tdesign-mobile-vue 样式覆盖
+- **`style.css`** — 全局 CSS 变量（明暗双主题），tdesign-vue-next 样式覆盖
 
 ### 架构决策记录
 

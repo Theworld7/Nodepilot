@@ -10,14 +10,14 @@ export default defineConfig({
     AutoImport({
       dts: '/Users/finn/Documents/Code/nodepilot/node_modules/.tmp/auto-imports.d.ts',
       resolvers: [TDesignResolver({
-        library: 'mobile-vue',
+        library: 'vue-next',
         resolveIcons: true,
       })],
     }),
     Components({
       dts: '/Users/finn/Documents/Code/nodepilot/node_modules/.tmp/components.d.ts',
       resolvers: [TDesignResolver({
-        library: 'mobile-vue',
+        library: 'vue-next',
         resolveIcons: true,
       })],
     }),

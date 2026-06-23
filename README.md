@@ -87,7 +87,7 @@
 | 桌面框架 | [Tauri 2](https://v2.tauri.app/) |
 | 后端语言 | Rust 2021 edition |
 | 前端框架 | [Vue 3](https://vuejs.org/) + TypeScript |
-| UI 组件库 | [tdesign-mobile-vue](https://tdesign.tencent.com/mobile-vue/) |
+| UI 组件库 | [tdesign-vue-next](https://tdesign.tencent.com/vue-next/) |
 | 构建工具 | [Vite](https://vitejs.dev/) |
 | 包管理器 | pnpm |
 

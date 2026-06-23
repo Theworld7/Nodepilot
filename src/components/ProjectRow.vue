@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, nextTick } from "vue"
+import { ref, reactive, nextTick } from "vue"
 import { invoke } from "@tauri-apps/api/core"
 import type { ProjectInfo } from "../types"
 
@@ -61,26 +61,27 @@ function onKeydown(e: KeyboardEvent) {
   }
 }
 
-// ---- 项目设置 Popup ----
+// ---- 项目设置 Drawer ----
 const showSettings = ref(false)
 const scripts = ref<Record<string, string>>({})
-const selectedScript = ref<string>("")
-const prefixInput = ref("")
+const formData = reactive({
+  selectedScript: "",
+  prefixInput: "",
+})
 const loadingScripts = ref(false)
 
 async function openSettings() {
   loadingScripts.value = true
   scripts.value = {}
-  scripts.value = {}
-  selectedScript.value = ""
-  prefixInput.value = ""
+  formData.selectedScript = ""
+  formData.prefixInput = ""
 
   // 预填已保存的配置
   if (props.project.default_script) {
-    selectedScript.value = props.project.default_script
+    formData.selectedScript = props.project.default_script
   }
   if (props.project.command_prefix) {
-    prefixInput.value = props.project.command_prefix
+    formData.prefixInput = props.project.command_prefix
   }
 
   try {
@@ -90,10 +91,10 @@ async function openSettings() {
     if (pkg?.scripts) {
       scripts.value = pkg.scripts
       // 如果没有保存的配置但项目有 scripts，默认选中第一个
-      if (!selectedScript.value) {
+      if (!formData.selectedScript) {
         const keys = Object.keys(scripts.value)
         if (keys.length > 0) {
-          selectedScript.value = keys[0]
+          formData.selectedScript = keys[0]
         }
       }
     } else {
@@ -109,8 +110,8 @@ async function openSettings() {
 }
 
 async function saveSettings() {
-  const script = selectedScript.value.trim() || null
-  const prefix = prefixInput.value.trim() || null
+  const script = formData.selectedScript.trim() || null
+  const prefix = formData.prefixInput.trim() || null
   try {
     await invoke("update_project_config", {
       version: props.project.version,
@@ -147,7 +148,7 @@ function cancelSettings() {
           <t-button
             v-if="!editing"
             class="edit-trigger"
-            size="extra-small"
+            shape="circle"
             variant="text"
             @click.stop="startEdit(project)"
           >
@@ -157,7 +158,7 @@ function cancelSettings() {
           <t-button
             v-if="!editing"
             class="edit-trigger"
-            size="extra-small"
+            shape="circle"
             variant="text"
             @click.stop="openSettings"
           >
@@ -171,7 +172,7 @@ function cancelSettings() {
       <div class="row-actions">
         <t-button
           v-if="!running && !starting"
-          size="extra-small"
+          shape="circle"
           theme="primary"
           variant="text"
           @click.stop="emit('start', project)"
@@ -180,7 +181,7 @@ function cancelSettings() {
         </t-button>
         <t-button
           v-else-if="starting"
-          size="extra-small"
+          shape="circle"
           variant="text"
           disabled
         >
@@ -188,14 +189,14 @@ function cancelSettings() {
         </t-button>
         <template v-else>
           <t-button
-            size="extra-small"
+            shape="circle"
             variant="text"
             @click.stop="emit('openLog', project)"
           >
             <CodeIcon />
           </t-button>
           <t-button
-            size="extra-small"
+            shape="circle"
             theme="danger"
             variant="text"
             @click.stop="emit('stop', project)"
@@ -205,7 +206,7 @@ function cancelSettings() {
         </template>
         <t-button
           v-if="!running && !starting"
-          size="extra-small"
+          shape="circle"
           theme="danger"
           variant="text"
           @click.stop="emit('unbind', project)"
@@ -215,71 +216,52 @@ function cancelSettings() {
       </div>
     </div>
 
-    <!-- 项目设置 Popup -->
-    <t-popup v-model:visible="showSettings" placement="bottom">
-      <template #content>
-        <div class="settings-panel">
-          <!-- 加载中 -->
-          <div v-if="loadingScripts" class="settings-loading">
-            <t-loading theme="spinner" />
+    <!-- 项目设置 Drawer -->
+    <t-drawer v-model:visible="showSettings" placement="bottom" header="项目配置">
+      <!-- 加载中 -->
+      <div v-if="loadingScripts" class="settings-loading">
+        <t-loading theme="spinner" />
+      </div>
+
+      <t-form v-else :data="formData" label-align="top" class="settings-form">
+        <t-form-item label="默认执行命令" name="selectedScript">
+          <t-radio-group v-model="formData.selectedScript" variant="default-filled">
+            <t-radio-button
+              v-for="(cmd, key) in scripts"
+              :key="key"
+              :value="key"
+              :label="cmd"
+            >
+              {{ key }}
+            </t-radio-button>
+          </t-radio-group>
+          <!-- 无脚本或需要自定义时，允许手动输入 -->
+          <div v-if="Object.keys(scripts).length === 0" class="settings-empty">
+            该项目无可用脚本，请在下方输入自定义命令名
           </div>
+          <t-input
+            v-if="!formData.selectedScript"
+            v-model="formData.selectedScript"
+            placeholder="输入自定义脚本名，如 dev"
+            class="settings-custom-input"
+          />
+        </t-form-item>
 
-          <template v-else>
-            <div class="settings-header">项目配置</div>
+        <t-form-item label="命令前缀" name="prefixInput">
+          <t-input
+            v-model="formData.prefixInput"
+            placeholder="可选，如 tauri"
+            clearable
+          />
+        </t-form-item>
+      </t-form>
 
-            <div class="settings-body">
-              <!-- 默认执行命令 -->
-              <div class="settings-group">
-                <div class="settings-label">默认执行命令</div>
-                <t-radio-group v-model="selectedScript">
-                  <div
-                    v-for="(cmd, key) in scripts"
-                    :key="key"
-                    class="script-card"
-                    :class="{ 'script-card--active': selectedScript === key }"
-                  >
-                    <CheckIcon v-if="selectedScript === key" class="script-card__check" />
-                    <t-radio
-                      :value="key"
-                      borderless
-                      icon="none"
-                      :label="key"
-                      :content="cmd"
-                    />
-                  </div>
-                </t-radio-group>
-                <!-- 无脚本或需要自定义时，允许手动输入 -->
-                <div v-if="Object.keys(scripts).length === 0" class="settings-empty">
-                  该项目无可用脚本，请在下方输入自定义命令名
-                </div>
-                <t-input
-                  v-if="!selectedScript"
-                  v-model="selectedScript"
-                  placeholder="输入自定义脚本名，如 dev"
-                  class="settings-custom-input"
-                />
-              </div>
-
-              <!-- 命令前缀 -->
-              <div class="settings-group">
-                <div class="settings-label">命令前缀</div>
-                <t-input
-                  v-model="prefixInput"
-                  placeholder="可选，如 tauri"
-                  clearable
-                />
-              </div>
-            </div>
-
-            <!-- 底部按钮 -->
-            <div class="settings-footer">
-              <t-button variant="outline" @click="cancelSettings">取消</t-button>
-              <t-button theme="primary" @click="saveSettings">保存</t-button>
-            </div>
-          </template>
-        </div>
+      <!-- 底部按钮 -->
+      <template #footer>
+          <t-button variant="outline" @click="cancelSettings">取消</t-button>
+          <t-button theme="primary" @click="saveSettings">保存</t-button>
       </template>
-    </t-popup>
+    </t-drawer>
   </div>
 </template>
 
@@ -315,6 +297,7 @@ function cancelSettings() {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  margin-right: 12px;
 }
 
 .name-line {
@@ -358,91 +341,15 @@ function cancelSettings() {
   flex-shrink: 0;
 }
 
-/* 设置面板样式 */
-.settings-panel {
-  display: flex;
-  flex-direction: column;
-  max-height: 65vh;
-  background: var(--surface);
-}
-
-.settings-header {
-  flex-shrink: 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-h);
-  padding: 20px 16px 0;
-  margin-bottom: 16px;
-}
-
-.settings-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: 0 16px;
-}
-
+/* 设置表单样式 */
 .settings-loading {
   display: flex;
   justify-content: center;
   padding: 40px 0;
 }
 
-.settings-group {
-  margin-bottom: 16px;
-}
-
-.settings-label {
-  font-size: 13px;
-  color: var(--text);
-  margin-bottom: 8px;
-}
-
-.settings-group :deep(.t-radio-group) {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
-
-/* 纵向卡片样式 */
-.script-card {
-  position: relative;
-  margin: 0 0 12px 0;
-  border-radius: 8px;
-  overflow: hidden;
-  box-sizing: border-box;
-  border: 1.5px solid var(--border);
-  transition: border-color 0.2s;
-}
-
-.script-card:last-child {
-  margin-bottom: 0;
-}
-
-.script-card--active {
-  border-color: var(--brand);
-}
-
-.script-card--active::after {
-  content: '';
-  display: block;
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 0;
-  height: 0;
-  border: 14px solid var(--brand);
-  border-bottom-color: transparent;
-  border-right-color: transparent;
-}
-
-.script-card__check {
-  display: block;
-  color: #fff;
-  position: absolute;
-  left: 1.5px;
-  top: 1.5px;
-  z-index: 1;
-  font-size: 14px;
+.settings-form :deep(.t-form__item) {
+  margin-bottom: 20px;
 }
 
 .settings-empty {
@@ -456,11 +363,8 @@ function cancelSettings() {
 }
 
 .settings-footer {
-  flex-shrink: 0;
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  padding: 16px;
-  border-top: 1px solid var(--border);
 }
 </style>
