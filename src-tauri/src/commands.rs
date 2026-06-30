@@ -11,6 +11,87 @@ use crate::version::event::{EventSink, VersionEvent};
 use crate::version::types::NodeVersion;
 use crate::version::{VersionCommand, ExecuteOutput};
 
+/// 剥离 ANSI 转义码（颜色、光标控制等），避免在非终端 UI 中显示乱码。
+/// 处理 CSI 序列 (\x1b[...m) 和 OSC 序列 (\x1b]...\x07)。
+#[allow(dead_code)]
+fn strip_ansi(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\x1b' {
+            match chars.peek() {
+                Some('[') => {
+                    chars.next(); // consume '['
+                    // 跳过参数部分（数字和分号）
+                    while chars.next_if(|&ch| ch.is_ascii_digit() || ch == ';').is_some() {}
+                    // 跳过终止字母
+                    chars.next_if(|&ch| ch.is_ascii_alphabetic());
+                }
+                Some(']') => {
+                    // OSC 序列: \x1b]...\x07 或 \x1b]...ST
+                    chars.next(); // consume ']'
+                    while let Some(&ch) = chars.peek() {
+                        if ch == '\x07' || ch == '\x1b' {
+                            break;
+                        }
+                        chars.next();
+                    }
+                    if chars.peek() == Some(&'\x1b') {
+                        chars.next(); // consume ESC
+                        chars.next_if(|&ch| ch == '\\'); // consume ST terminator
+                    } else {
+                        chars.next_if(|&ch| ch == '\x07'); // consume BEL
+                    }
+                }
+                _ => {
+                    // 非标准 ESC 序列，跳过下一个字符
+                    chars.next();
+                }
+            }
+        } else {
+            result.push(c);
+        }
+    }
+    result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn strip_ansi_removes_color_codes() {
+        assert_eq!(strip_ansi("\x1b[32mVITE\x1b[39m v5.0.12"), "VITE v5.0.12");
+        assert_eq!(strip_ansi("\x1b[32m\x1b[1mVITE\x1b[22m v5.0.12\x1b[39m"), "VITE v5.0.12");
+    }
+
+    #[test]
+    fn strip_ansi_removes_complex_sequences() {
+        let input = "\x1b[2m\x1b[32m  ➜\x1b[39m\x1b[22m\x1b[2m  press \x1b[22m\x1b[1mh + enter\x1b[22m\x1b[2m to show help\x1b[22m";
+        assert_eq!(strip_ansi(input), "  ➜  press h + enter to show help");
+    }
+
+    #[test]
+    fn strip_ansi_preserves_plain_text() {
+        assert_eq!(strip_ansi("hello world"), "hello world");
+        assert_eq!(strip_ansi("no ansi codes here"), "no ansi codes here");
+    }
+
+    #[test]
+    fn strip_ansi_handles_empty() {
+        assert_eq!(strip_ansi(""), "");
+    }
+
+    #[test]
+    fn strip_ansi_handles_real_vite_output() {
+        let input = "\x1b[32m\x1b[1mVITE\x1b[22m v5.0.12\x1b[39m  \x1b[2mready in \x1b[0m\x1b[1m1460\x1b[22m\x1b[2m\x1b[0m ms\x1b[22m";
+        assert_eq!(strip_ansi(input), "VITE v5.0.12  ready in 1460 ms");
+
+        let input2 = "\x1b[32m➜\x1b[39m  \x1b[1mLocal\x1b[22m:   \x1b[36mhttp://localhost:\x1b[1m3006\x1b[22m/\x1b[39m";
+        assert_eq!(strip_ansi(input2), "➜  Local:   http://localhost:3006/");
+    }
+}
+
 pub struct AppState {
     pub nodepilot_dir: PathBuf,
     pub manager: crate::version::VersionManager,
