@@ -246,7 +246,7 @@ build_app() {
   fi
 
   log_info "运行: pnpm tauri build ${tauri_args[*]+"${tauri_args[*]}"}"
-  pnpm tauri build "${tauri_args[@]}" || die "Tauri 构建失败"
+  pnpm tauri build ${tauri_args[@]+"${tauri_args[@]}"} || die "Tauri 构建失败"
 
   # 验证产物
   local dmg_path="$TAURI_DIR/target/release/bundle/dmg/nodepilot_${version}_${TARGET_LABEL}.dmg"
