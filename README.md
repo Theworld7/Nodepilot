@@ -26,8 +26,9 @@
 - **📦 全局包迁移** — 切换版本时自动重装 npm 全局包，无缝衔接
 - **🗑️ 一键删除** — 删除已安装版本释放磁盘空间，带确认保护
 - **📂 项目绑定** — 将 Node 版本与项目目录关联，支持自定义别名、默认脚本和命令前缀
-- **▶️ 开发服务管理** — 一键启动/停止 dev server，自动检测包管理器（pnpm / yarn / npm）
-- **📋 实时日志** — 独立窗口实时展示 dev server 输出，macOS 上通过 PTY 消除子进程缓冲延迟
+- **▶️ 开发服务管理** — 一键启动/停止 dev server，自动检测包管理器（pnpm / yarn / npm），通过 PTY + stdin 管道确保子进程稳定运行
+- **📋 实时日志** — 独立窗口实时展示 dev server 输出，支持 ANSI 彩色渲染
+- **🖱️ 日志多选复制** — 进入选择模式后，支持 Shift 范围选择、全选/取消全选，一键复制选中行并自动退出选择模式
 - **🔄 自动启动** — 支持开机自启，始终可用
 - **🔄 自动更新** — 支持应用内自动检查并安装新版本
 - **🛠️ 自定义镜像** — 支持配置自定义 Node.js 下载镜像源
@@ -41,7 +42,7 @@
   <img src="./screenshots/version-list.png" alt="版本管理面板" width="375" />
 </div>
 
-**项目管理** — 折叠面板内展示绑定的项目，支持一键启动/停止开发服务、查看日志、编辑别名与移除绑定
+**项目管理** — 折叠面板内展示绑定的项目，支持一键启动/停止开发服务、查看日志、编辑别名、项目配置抽屉
 
 <div align="center">
   <img src="./screenshots/project-management-overview.png" alt="项目管理" width="375" />
@@ -75,9 +76,10 @@
 | 清理旧版本 | 点击「删除」→ 确认 |
 | 切换版本时迁移全局包 | 激活后选择「重装全局 npm 包」|
 | 为项目绑定 Node 版本 | 点击文件夹图标 → 选择项目目录 |
-| 修改项目别名/默认脚本 | 展开版本 → 编辑项目配置 |
+| 修改项目别名/默认脚本 | 展开版本 → 编辑项目 → 在设置抽屉中配置 |
 | 启动项目开发服务 | 展开版本 → 点击项目旁的 ▶️ |
 | 查看服务运行日志 | 服务运行中点击日志按钮 |
+| 复制日志中的错误信息 | 日志窗口 → 点击「选择」→ 勾选目标行 → 「复制」|
 | 首次启动自动配置 | 确认对话框 → 自动注入 PATH → 重启终端即可 |
 
 ## 🏗️ 技术栈
@@ -100,32 +102,31 @@ nodepilot/
 │   ├── main.ts
 │   ├── panels/
 │   │   ├── VersionListPanel.vue      # 版本列表面板
-│   │   └── LogView.vue               # Dev Server 日志独立窗口
+│   │   └── LogView.vue               # Dev Server 日志独立窗口（ANSI 渲染 + 多选复制）
 │   ├── components/
-│   │   ├── VersionRow.vue            # 版本条目（含折叠面板）
-│   │   ├── ProjectRow.vue            # 项目条目（含启动/停止/日志/别名）
-│   │   └── CodeBlock.vue             # 代码块组件
+│   │   ├── VersionRow.vue            # 版本条目（含折叠面板、项目绑定与启动）
+│   │   ├── ProjectRow.vue            # 项目条目（含设置抽屉、Select 脚本选择器、启动/停止/日志）
+│   │   ├── CodeBlock.vue             # 代码块组件
+│   │   └── LoadingSpinner.vue        # 自定义加载动画
 │   ├── composables/
 │   │   ├── useVersionManager.ts      # IPC 封装组合函数
 │   │   └── useTheme.ts               # 明暗主题切换
 │   ├── types/
 │   │   └── index.ts                  # TypeScript 类型定义
-│   ├── assets/
 │   └── style.css
 ├── src-tauri/                    # Rust 后端
 │   ├── capabilities/
 │   │   └── default.json              # 权限配置（main, log-* 窗口）
+│   ├── icons/                        # 应用图标
 │   └── src/
 │       ├── main.rs                   # 入口
 │       ├── lib.rs                    # Tauri 应用启动 + 插件注册（自动启动/更新/对话框）
-│       ├── commands.rs               # IPC 命令（版本/项目/日志/环境配置）
+│       ├── commands.rs               # IPC 命令（版本/项目/日志/环境配置/Dev Server）
 │       ├── env_setup.rs              # 自动环境配置（PATH 注入、竞品检测、失败回滚）
 │       ├── client.rs                 # HTTP 客户端（含 test mock）
 │       ├── fs.rs                     # 文件系统抽象（含 test mock）
 │       ├── error.rs                  # 统一错误类型 AppError
 │       ├── tray.rs                   # 托盘图标生成
-│       ├── project/                  # 项目管理模块（预留）
-│       ├── updater/                  # 自动更新模块（预留）
 │       └── version/
 │           ├── mod.rs
 │           ├── types.rs              # 数据结构
@@ -140,6 +141,7 @@ nodepilot/
 ├── screenshots/                  # 截图
 │   ├── version-list.png
 │   └── project-management-overview.png
+├── scripts/                      # 构建与发布脚本
 ├── docs/
 │   ├── prd.md
 │   └── adr/
