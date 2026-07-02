@@ -1,9 +1,13 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use tauri::{AppHandle, Emitter, State};
 use tokio::io::AsyncBufReadExt;
+
+#[cfg(unix)]
+use std::os::unix::process::ExitStatusExt;
 
 use crate::error::AppError;
 use crate::tray;
@@ -97,7 +101,7 @@ pub struct AppState {
     pub manager: crate::version::VersionManager,
     pub config_path: PathBuf,
     pub projects_path: PathBuf,
-    pub servers: Mutex<HashMap<String, tokio::process::Child>>,
+    pub servers: Arc<Mutex<HashMap<String, u32>>>,
     pub log_buffers: Arc<Mutex<HashMap<String, Vec<String>>>>,
 }
 
@@ -443,6 +447,27 @@ pub fn detect_pm(path: String) -> String {
     detect_package_manager(&PathBuf::from(&path)).to_string()
 }
 
+/// 向日志缓冲区和前端推送一条诊断消息（以 [nodepilot] 为前缀）。
+fn push_diag(
+    app: &AppHandle,
+    log_buffers: &Arc<Mutex<HashMap<String, Vec<String>>>>,
+    path: &str,
+    msg: String,
+) {
+    {
+        let mut buffers = log_buffers.lock().unwrap();
+        let buf = buffers.entry(path.to_string()).or_default();
+        if buf.len() >= 1000 {
+            buf.remove(0);
+        }
+        buf.push(msg.clone());
+    }
+    let _ = app.emit(
+        "dev_server_log",
+        serde_json::json!({ "path": path, "line": msg }),
+    );
+}
+
 #[tauri::command]
 pub async fn start_dev_server(
     app: AppHandle,
@@ -468,12 +493,16 @@ pub async fn start_dev_server(
     // 继承管道 fd 后仍会全缓冲。使用 PTY 包装，让整个进程树认为连接了终端 → 行缓冲。
     // macOS: 内置 script -q /dev/null <命令>
     // Linux: stdbuf -o0 -e0 <命令> 作为降级（不覆盖孙进程，但至少子进程无缓冲）
+    //
+    // 诊断开关：设置环境变量 NODEPILOT_NO_PTY=1 可跳过 script PTY 包装，
+    // 用于对比测试 PTY 是否是进程退出的根因。
+    let no_pty = std::env::var("NODEPILOT_NO_PTY").map(|v| v == "1").unwrap_or(false);
     let pty_program;
     let use_pty: bool;
     #[cfg(target_os = "macos")]
     {
         pty_program = "/usr/bin/script";
-        use_pty = std::path::Path::new(pty_program).exists();
+        use_pty = !no_pty && std::path::Path::new(pty_program).exists();
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -481,24 +510,36 @@ pub async fn start_dev_server(
         use_pty = false;
     }
 
-    let (program, args): (&str, Vec<&str>) = if use_pty {
-        ("script", {
-            let mut a = vec!["-q", "/dev/null", parts[0]];
-            a.extend(&parts[1..]);
-            a
-        })
+    // PTY 包装：macOS 上使用 script 创建伪终端以获取行缓冲输出。
+    // 由于 script 会将自身 stdin 转发到 PTY，而 GUI 应用没有交互式 stdin，
+    // 导致 PTY 内子进程（Vite）的 stdin 被关闭而退出。
+    //
+    // 修复方案：用 sh -c 包装，通过 sleep ... | <cmd> 管道给子进程提供一个
+    // 永不会 EOF 的 stdin（sleep 进程持有管道写端，最长运行约68年）。
+    // 这样 Vite 的 stdin 来自 sleep 管道而非 script 的 PTY 转发，
+    // script 自身的 stdin 由 .stdin(piped()) 保持打开（Child 持有写端）。
+    let (program, args): (&str, Vec<String>) = if use_pty {
+        let inner = parts.join(" ");
+        let shell_cmd = format!("sleep 2147483647 | {}", inner);
+        (
+            "script",
+            vec![
+                "-q".into(),
+                "/dev/null".into(),
+                "sh".into(),
+                "-c".into(),
+                shell_cmd,
+            ],
+        )
     } else {
-        // 降级：stdbuf 至少让直接子进程无缓冲
         let stdbuf_path = "/usr/bin/stdbuf";
         let has_stdbuf = std::path::Path::new(stdbuf_path).exists();
         if has_stdbuf {
-            ("stdbuf", {
-                let mut a = vec!["-o0", "-e0", parts[0]];
-                a.extend(&parts[1..]);
-                a
-            })
+            let mut a: Vec<String> = vec!["-o0".into(), "-e0".into(), parts[0].into()];
+            a.extend(parts[1..].iter().map(|s| s.to_string()));
+            ("stdbuf", a)
         } else {
-            (parts[0], parts[1..].iter().copied().collect())
+            (parts[0], parts[1..].iter().map(|s| s.to_string()).collect())
         }
     };
 
@@ -530,31 +571,135 @@ pub async fn start_dev_server(
         format!("{}:{}:{}", nodepilot_bin.display(), extra, existing_path)
     };
 
+    // 诊断日志：记录启动参数
+    let log_buffers = state.log_buffers.clone();
+    push_diag(&app, &log_buffers, &path, format!(
+        "[nodepilot] 启动命令: {} {:?}",
+        program, args
+    ));
+    push_diag(&app, &log_buffers, &path, format!(
+        "[nodepilot] 工作目录: {}",
+        project_dir.display()
+    ));
+    push_diag(&app, &log_buffers, &path, format!(
+        "[nodepilot] PATH 头: {}",
+        new_path
+    ));
+
+    // stdin 必须设为 piped，而不是继承 Tauri 进程的 stdin。
+    // 原因：macOS 上 script 使用 PTY 包装命令，当 script 的 stdin 读到 EOF（GUI 应用无交互式 stdin）
+    // 时会关闭 PTY → 子进程（Vite 等）的 stdin 也关闭 → Vite 在 stdin 关闭时主动退出（code=0）。
+    // 设置 piped stdin 后，写入端由 Child 持有，只要 Child 存活 pipe 就保持打开，
+    // script 会阻塞等待 stdin 输入，PTY 不会关闭，Vite 持续运行。
     let mut child = tokio::process::Command::new(program)
         .args(&args)
         .current_dir(&project_dir)
         .env("PATH", &new_path)
+        .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .process_group(0)
         .spawn()
         .map_err(|e| AppError::Io(format!("failed to start dev server: {e}")))?;
 
+    let child_pid = child.id();
+
     let stdout = child.stdout.take()
         .ok_or_else(|| AppError::Io("no stdout".to_string()))?;
     let stderr = child.stderr.take()
         .ok_or_else(|| AppError::Io("no stderr".to_string()))?;
 
+    // 将 PID 存入 servers map，Child 所有权移交给 exit watcher
     {
         let mut servers = state.servers.lock().unwrap();
-        servers.insert(path.clone(), child);
+        if let Some(pid) = child_pid {
+            servers.insert(path.clone(), pid);
+        }
     }
 
-    let log_buffers = state.log_buffers.clone();
+    // Spawn exit watcher —— 拥有 Child 所有权，等待进程退出后通知前端
+    let exit_app = app.clone();
+    let exit_path = path.clone();
+    let exit_buffers = state.log_buffers.clone();
+    let exit_servers = state.servers.clone();
+    let started_at = Instant::now();
+    tokio::spawn(async move {
+        let status = child.wait().await;
+        let elapsed = started_at.elapsed();
+
+        // 从 servers 中移除
+        {
+            let mut servers = exit_servers.lock().unwrap();
+            servers.remove(&exit_path);
+        }
+
+        // 详细的退出原因诊断
+        #[allow(unused_mut)]
+        let mut diags: Vec<String> = Vec::new();
+
+        diags.push(format!(
+            "[nodepilot] 运行时长: {:.1}s",
+            elapsed.as_secs_f64()
+        ));
+
+        // 注意：script 包装器下 wait() 等到的是 script 进程本身退出，
+        // 它通常在子进程退出后才退出，所以这个 code 反映的是 script 包装器的退出码
+        let code_diag = match &status {
+            Ok(s) => {
+                #[cfg(unix)]
+                {
+                    if let Some(sig) = s.signal() {
+                        // 将常见信号号映射为可读名称
+                        let name = match sig {
+                            1 => "SIGHUP",
+                            2 => "SIGINT",
+                            3 => "SIGQUIT",
+                            6 => "SIGABRT",
+                            9 => "SIGKILL",
+                            13 => "SIGPIPE",
+                            15 => "SIGTERM",
+                            17 => "SIGSTOP",
+                            _ => "UNKNOWN",
+                        };
+                        format!("[nodepilot] 进程被信号杀死 (signal={sig} {name})")
+                    } else {
+                        format!(
+                            "[nodepilot] 进程退出 (exit code={})",
+                            s.code().unwrap_or(-1)
+                        )
+                    }
+                }
+                #[cfg(not(unix))]
+                {
+                    format!(
+                        "[nodepilot] 进程退出 (exit code={})",
+                        s.code().unwrap_or(-1)
+                    )
+                }
+            }
+            Err(e) => format!("[nodepilot] 等待进程失败: {e}"),
+        };
+        diags.push(code_diag);
+
+        // 快速退出警告
+        if elapsed.as_secs() < 5 {
+            diags.push("[nodepilot] ⚠ 进程在 5 秒内退出，可能是 stdin 关闭或命令异常终止".to_string());
+        }
+
+        for d in diags {
+            push_diag(&exit_app, &exit_buffers, &exit_path, d);
+        }
+
+        let _ = exit_app.emit("dev_server_status", serde_json::json!({
+            "path": exit_path,
+            "running": false,
+        }));
+    });
 
     // Spawn stdout reader: 逐行读取 → 缓冲 + 事件
     let app_stdout = app.clone();
     let path_out = path.clone();
+    let log_buffers_stdout = state.log_buffers.clone();
     tokio::spawn(async move {
         let mut reader = tokio::io::BufReader::new(stdout);
         let mut line = String::new();
@@ -565,7 +710,7 @@ pub async fn start_dev_server(
                 continue;
             }
             {
-                let mut buffers = log_buffers.lock().unwrap();
+                let mut buffers = log_buffers_stdout.lock().unwrap();
                 let buf = buffers.entry(path_out.clone()).or_default();
                 if buf.len() >= 1000 {
                     buf.remove(0);
@@ -625,7 +770,7 @@ pub async fn stop_dev_server(
 ) -> Result<(), AppError> {
     let pid = {
         let mut servers = state.servers.lock().unwrap();
-        servers.remove(&path).and_then(|c| c.id())
+        servers.remove(&path)
     };
 
     if let Some(pid) = pid {
@@ -651,8 +796,9 @@ pub fn get_dev_server_logs(state: State<'_, AppState>, path: String) -> Result<V
 
 pub fn cleanup_all_servers(state: &AppState) {
     let mut servers = state.servers.lock().unwrap();
-    let pids: Vec<u32> = servers.values().filter_map(|c| c.id()).collect();
+    let pids: Vec<u32> = servers.values().copied().collect();
     servers.clear();
+    drop(servers);
     for pid in pids {
         let _ = std::process::Command::new("kill")
             .arg("--")

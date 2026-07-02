@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, onMounted, onUnmounted } from "vue";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import type { UnlistenFn } from "@tauri-apps/api/event";
 import { open, confirm } from "@tauri-apps/plugin-dialog";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import type { NodeVersion, ProjectInfo } from "../types";
@@ -171,7 +173,27 @@ function getStatusTheme(
   return "default";
 }
 
-onMounted(loadProjects);
+let unlistenStatus: UnlistenFn | null = null;
+
+onMounted(async () => {
+  await loadProjects();
+
+  // 监听进程退出事件：如果进程自行退出，同步更新 runningServers
+  unlistenStatus = await listen<{ path: string; running: boolean }>(
+    "dev_server_status",
+    (event) => {
+      if (!event.payload.running) {
+        const next = new Set(runningServers.value);
+        next.delete(event.payload.path);
+        runningServers.value = next;
+      }
+    },
+  );
+});
+
+onUnmounted(() => {
+  if (unlistenStatus) unlistenStatus();
+});
 </script>
 
 <template>

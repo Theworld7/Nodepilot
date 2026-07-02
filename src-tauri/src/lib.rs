@@ -59,7 +59,7 @@ pub fn run() {
         manager,
         config_path,
         projects_path,
-        servers: std::sync::Mutex::new(std::collections::HashMap::new()),
+        servers: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
         log_buffers: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
     };
 
