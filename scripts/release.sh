@@ -245,7 +245,7 @@ build_app() {
     tauri_args+=(--target universal-apple-darwin)
   fi
 
-  log_info "运行: pnpm tauri build ${tauri_args[*]:-}"
+  log_info "运行: pnpm tauri build ${tauri_args[*]+"${tauri_args[*]}"}"
   pnpm tauri build "${tauri_args[@]}" || die "Tauri 构建失败"
 
   # 验证产物
