@@ -205,13 +205,13 @@ setup_updater_keys() {
 
   mkdir -p "$KEY_DIR"
   pnpm tauri signer generate \
-    --private-key-path "$PRIVATE_KEY" \
-    --public-key-path "$PUBLIC_KEY" \
+    --write-keys "$PRIVATE_KEY" \
+    --ci \
     || die "密钥生成失败"
 
   local pubkey
-  pubkey=$(cat "$PUBLIC_KEY")
-  sed -i '' "s/\"pubkey\": \"[^\"]*\"/\"pubkey\": \"$pubkey\"/" "$TAURI_CONF"
+  pubkey=$(cat "$PUBLIC_KEY" | tr -d '\n\r' | xargs)
+  sed -i '' "s|\"pubkey\": \"[^\"]*\"|\"pubkey\": \"$pubkey\"|" "$TAURI_CONF"
   log_info "密钥对已生成并写入 tauri.conf.json"
   log_warn "请妥善保管私钥: $PRIVATE_KEY（切勿提交到 Git）"
 }
