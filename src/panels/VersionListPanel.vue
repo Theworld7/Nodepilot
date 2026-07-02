@@ -172,6 +172,7 @@ function cancelDelete() {
 .panel-head {
   background: var(--surface);
   border-radius: var(--radius-lg);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 8px rgba(0, 0, 0, 0.04);
 }
 
 .panel-header {

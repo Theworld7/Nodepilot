@@ -225,16 +225,28 @@ function cancelSettings() {
 
       <t-form v-else :data="formData" label-align="top" class="settings-form">
         <t-form-item label="默认执行命令" name="selectedScript">
-          <t-radio-group v-model="formData.selectedScript" variant="default-filled">
-            <t-radio-button
+          <t-select
+            v-model="formData.selectedScript"
+            placeholder="选择 npm script"
+            clearable
+            filterable
+            class="settings-script-select"
+            :popup-props="{
+              overlayInnerStyle: { maxWidth: 'calc(100vw - 32px)' },
+            }"
+          >
+            <t-option
               v-for="(cmd, key) in scripts"
               :key="key"
               :value="key"
-              :label="cmd"
+              :label="key"
             >
-              {{ key }}
-            </t-radio-button>
-          </t-radio-group>
+              <div class="script-option">
+                <span class="script-key">{{ key }}</span>
+                <span class="script-cmd">{{ cmd }}</span>
+              </div>
+            </t-option>
+          </t-select>
           <!-- 无脚本或需要自定义时，允许手动输入 -->
           <div v-if="Object.keys(scripts).length === 0" class="settings-empty">
             该项目无可用脚本，请在下方输入自定义命令名
@@ -350,6 +362,30 @@ function cancelSettings() {
 
 .settings-form :deep(.t-form__item) {
   margin-bottom: 20px;
+}
+
+.settings-script-select {
+  width: 100%;
+}
+
+.script-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.script-key {
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.script-cmd {
+  font-size: 12px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .settings-empty {

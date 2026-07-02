@@ -3,6 +3,7 @@ import { ref, computed, onMounted, onUnmounted, nextTick, watch } from "vue"
 import { invoke } from "@tauri-apps/api/core"
 import { listen } from "@tauri-apps/api/event"
 import type { UnlistenFn } from "@tauri-apps/api/event"
+import { MessagePlugin } from "tdesign-vue-next"
 
 const params = new URLSearchParams(window.location.search)
 const projectPath = params.get("path") || ""
@@ -99,6 +100,13 @@ function enterSelectionMode(index: number) {
   lastClickedIndex.value = index
 }
 
+/** 从头部「选择」按钮进入选择模式，不预选任何行 */
+function enterSelectionModeFromHeader() {
+  selectionMode.value = true
+  selectedIndices.value = []
+  lastClickedIndex.value = null
+}
+
 function removeIndex(index: number) {
   selectedIndices.value = selectedIndices.value.filter((i) => i !== index)
   lastClickedIndex.value = index
@@ -145,8 +153,31 @@ async function copySelected() {
   try {
     await navigator.clipboard.writeText(lines.join("\n"))
   } catch (_) {
-    // 降级：Tauri 桌面环境 clipboard API 不可用时无提示
+    // 降级：Tauri 桌面环境 clipboard API 不可用时无提示，不退出选择模式
+    return
   }
+
+  MessagePlugin.success("复制成功")
+
+  // 短暂延迟让用户看到提示，再退出选择模式
+  setTimeout(() => {
+    selectionMode.value = false
+    selectedIndices.value = []
+    lastClickedIndex.value = null
+  }, 200)
+}
+
+const allSelected = computed(() => {
+  return logs.value.length > 0 && selectedIndices.value.length === logs.value.length
+})
+
+function toggleSelectAll() {
+  if (allSelected.value) {
+    selectedIndices.value = []
+  } else {
+    selectedIndices.value = logs.value.map((_, i) => i)
+  }
+  lastClickedIndex.value = null
 }
 
 onMounted(async () => {
@@ -200,10 +231,18 @@ watch(logs, () => {
       <span class="log-title">{{ projectName }}</span>
       <div class="log-header-row">
         <span class="log-path">{{ projectPath }}</span>
-        <div v-if="selectionMode" class="log-header-actions">
-          <span class="log-select-count">已选 {{ selectedIndices.length }} 行</span>
-          <t-button size="small" variant="text" @click="copySelected">复制</t-button>
-          <t-button size="small" variant="text" @click="cancelSelection">取消</t-button>
+        <div class="log-header-actions">
+          <template v-if="selectionMode">
+            <span class="log-select-count">已选 {{ selectedIndices.length }} 行</span>
+            <t-button size="small" variant="text" @click="toggleSelectAll">
+              {{ allSelected ? '取消全选' : '全选' }}
+            </t-button>
+            <t-button size="small" variant="text" @click="copySelected">复制</t-button>
+            <t-button size="small" variant="text" @click="cancelSelection">取消</t-button>
+          </template>
+          <t-button v-else size="small" variant="text" @click="enterSelectionModeFromHeader">
+            选择
+          </t-button>
         </div>
       </div>
     </div>
@@ -383,7 +422,7 @@ watch(logs, () => {
 }
 
 .log-num {
-  min-width: 2em;
+  min-width: 1.5em;
   text-align: right;
   padding-right: 12px;
   color: #555;

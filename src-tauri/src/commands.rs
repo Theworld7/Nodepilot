@@ -1,13 +1,9 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
 
 use tauri::{AppHandle, Emitter, State};
 use tokio::io::AsyncBufReadExt;
-
-#[cfg(unix)]
-use std::os::unix::process::ExitStatusExt;
 
 use crate::error::AppError;
 use crate::tray;
@@ -447,26 +443,6 @@ pub fn detect_pm(path: String) -> String {
     detect_package_manager(&PathBuf::from(&path)).to_string()
 }
 
-/// 向日志缓冲区和前端推送一条诊断消息（以 [nodepilot] 为前缀）。
-fn push_diag(
-    app: &AppHandle,
-    log_buffers: &Arc<Mutex<HashMap<String, Vec<String>>>>,
-    path: &str,
-    msg: String,
-) {
-    {
-        let mut buffers = log_buffers.lock().unwrap();
-        let buf = buffers.entry(path.to_string()).or_default();
-        if buf.len() >= 1000 {
-            buf.remove(0);
-        }
-        buf.push(msg.clone());
-    }
-    let _ = app.emit(
-        "dev_server_log",
-        serde_json::json!({ "path": path, "line": msg }),
-    );
-}
 
 #[tauri::command]
 pub async fn start_dev_server(
@@ -571,21 +547,6 @@ pub async fn start_dev_server(
         format!("{}:{}:{}", nodepilot_bin.display(), extra, existing_path)
     };
 
-    // 诊断日志：记录启动参数
-    let log_buffers = state.log_buffers.clone();
-    push_diag(&app, &log_buffers, &path, format!(
-        "[nodepilot] 启动命令: {} {:?}",
-        program, args
-    ));
-    push_diag(&app, &log_buffers, &path, format!(
-        "[nodepilot] 工作目录: {}",
-        project_dir.display()
-    ));
-    push_diag(&app, &log_buffers, &path, format!(
-        "[nodepilot] PATH 头: {}",
-        new_path
-    ));
-
     // stdin 必须设为 piped，而不是继承 Tauri 进程的 stdin。
     // 原因：macOS 上 script 使用 PTY 包装命令，当 script 的 stdin 读到 EOF（GUI 应用无交互式 stdin）
     // 时会关闭 PTY → 子进程（Vite 等）的 stdin 也关闭 → Vite 在 stdin 关闭时主动退出（code=0）。
@@ -620,74 +581,13 @@ pub async fn start_dev_server(
     // Spawn exit watcher —— 拥有 Child 所有权，等待进程退出后通知前端
     let exit_app = app.clone();
     let exit_path = path.clone();
-    let exit_buffers = state.log_buffers.clone();
     let exit_servers = state.servers.clone();
-    let started_at = Instant::now();
     tokio::spawn(async move {
-        let status = child.wait().await;
-        let elapsed = started_at.elapsed();
+        let _ = child.wait().await;
 
-        // 从 servers 中移除
         {
             let mut servers = exit_servers.lock().unwrap();
             servers.remove(&exit_path);
-        }
-
-        // 详细的退出原因诊断
-        #[allow(unused_mut)]
-        let mut diags: Vec<String> = Vec::new();
-
-        diags.push(format!(
-            "[nodepilot] 运行时长: {:.1}s",
-            elapsed.as_secs_f64()
-        ));
-
-        // 注意：script 包装器下 wait() 等到的是 script 进程本身退出，
-        // 它通常在子进程退出后才退出，所以这个 code 反映的是 script 包装器的退出码
-        let code_diag = match &status {
-            Ok(s) => {
-                #[cfg(unix)]
-                {
-                    if let Some(sig) = s.signal() {
-                        // 将常见信号号映射为可读名称
-                        let name = match sig {
-                            1 => "SIGHUP",
-                            2 => "SIGINT",
-                            3 => "SIGQUIT",
-                            6 => "SIGABRT",
-                            9 => "SIGKILL",
-                            13 => "SIGPIPE",
-                            15 => "SIGTERM",
-                            17 => "SIGSTOP",
-                            _ => "UNKNOWN",
-                        };
-                        format!("[nodepilot] 进程被信号杀死 (signal={sig} {name})")
-                    } else {
-                        format!(
-                            "[nodepilot] 进程退出 (exit code={})",
-                            s.code().unwrap_or(-1)
-                        )
-                    }
-                }
-                #[cfg(not(unix))]
-                {
-                    format!(
-                        "[nodepilot] 进程退出 (exit code={})",
-                        s.code().unwrap_or(-1)
-                    )
-                }
-            }
-            Err(e) => format!("[nodepilot] 等待进程失败: {e}"),
-        };
-        diags.push(code_diag);
-
-        // 快速退出警告
-        if elapsed.as_secs() < 5 {
-            diags.push("[nodepilot] ⚠ 进程在 5 秒内退出，可能是 stdin 关闭或命令异常终止".to_string());
-        }
-
-        for d in diags {
-            push_diag(&exit_app, &exit_buffers, &exit_path, d);
         }
 
         let _ = exit_app.emit("dev_server_status", serde_json::json!({
