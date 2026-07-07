@@ -26,6 +26,7 @@
 - **📦 全局包迁移** — 切换版本时自动重装 npm 全局包，无缝衔接
 - **🗑️ 一键删除** — 删除已安装版本释放磁盘空间，带确认保护
 - **📂 项目绑定** — 将 Node 版本与项目目录关联，支持自定义别名、默认脚本和命令前缀
+- **🌿 分支切换** — 在项目行直接查看和切换 Git 分支，无需离开面板。分支切换前自动检测运行状态，确保安全操作
 - **▶️ 开发服务管理** — 一键启动/停止 dev server，自动检测包管理器（pnpm / yarn / npm），通过 PTY + stdin 管道确保子进程稳定运行
 - **📋 实时日志** — 独立窗口实时展示 dev server 输出，支持 ANSI 彩色渲染
 - **🖱️ 日志多选复制** — 进入选择模式后，支持 Shift 范围选择、全选/取消全选，一键复制选中行并自动退出选择模式
@@ -78,6 +79,7 @@
 | 为项目绑定 Node 版本 | 点击文件夹图标 → 选择项目目录 |
 | 修改项目别名/默认脚本 | 展开版本 → 编辑项目 → 在设置抽屉中配置 |
 | 启动项目开发服务 | 展开版本 → 点击项目旁的 ▶️ |
+| 切换 Git 分支 | 展开版本 → 点击项目分支名 → 选择目标分支 |
 | 查看服务运行日志 | 服务运行中点击日志按钮 |
 | 复制日志中的错误信息 | 日志窗口 → 点击「选择」→ 勾选目标行 → 「复制」|
 | 首次启动自动配置 | 确认对话框 → 自动注入 PATH → 重启终端即可 |
@@ -105,7 +107,7 @@ nodepilot/
 │   │   └── LogView.vue               # Dev Server 日志独立窗口（ANSI 渲染 + 多选复制）
 │   ├── components/
 │   │   ├── VersionRow.vue            # 版本条目（含折叠面板、项目绑定与启动）
-│   │   ├── ProjectRow.vue            # 项目条目（含设置抽屉、Select 脚本选择器、启动/停止/日志）
+│   │   ├── ProjectRow.vue            # 项目条目（含设置抽屉、脚本选择器、分支切换、启动/停止/日志）
 │   │   ├── CodeBlock.vue             # 代码块组件
 │   │   └── LoadingSpinner.vue        # 自定义加载动画
 │   ├── composables/
@@ -121,7 +123,7 @@ nodepilot/
 │   └── src/
 │       ├── main.rs                   # 入口
 │       ├── lib.rs                    # Tauri 应用启动 + 插件注册（自动启动/更新/对话框）
-│       ├── commands.rs               # IPC 命令（版本/项目/日志/环境配置/Dev Server）
+│       ├── commands.rs               # IPC 命令（版本/项目/日志/环境配置/Dev Server/Git 分支）
 │       ├── env_setup.rs              # 自动环境配置（PATH 注入、竞品检测、失败回滚）
 │       ├── client.rs                 # HTTP 客户端（含 test mock）
 │       ├── fs.rs                     # 文件系统抽象（含 test mock）
@@ -148,7 +150,9 @@ nodepilot/
 │       ├── 0001-rust-owns-version-management.md
 │       ├── 0002-popup-window-panel.md
 │       ├── 0003-dynamic-tray-icon.md
-│       └── 0004-regular-desktop-window.md
+│       ├── 0004-regular-desktop-window.md
+│       ├── 0005-tdesign-desktop-migration.md
+│       └── 0006-git-branch-switching.md
 └── package.json
 ```
 
@@ -204,6 +208,8 @@ pnpm tauri build
 - [ADR-0002](docs/adr/0002-popup-window-panel.md) — 弹出式面板（已被 ADR-0004 替代）
 - [ADR-0003](docs/adr/0003-dynamic-tray-icon.md) — 动态托盘图标显示版本号
 - [ADR-0004](docs/adr/0004-regular-desktop-window.md) — 传统桌面窗口替代弹出面板
+- [ADR-0005](docs/adr/0005-tdesign-desktop-migration.md) — 使用 TDesign 组件库替代自定义 UI
+- [ADR-0006](docs/adr/0006-git-branch-switching.md) — 项目行内 Git 分支切换
 
 ## 🤝 贡献
 

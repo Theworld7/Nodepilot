@@ -73,6 +73,17 @@ Version list is cached locally as JSON. On panel open, shows cached data immedia
 ### Offline Behaviour
 When offline, shows cached version list. Installation and refresh are disabled.
 
+## Project Management
+
+### Project Binding
+A project directory associated with a specific Node version. Stored in `~/.nodepilot/projects.json`. Each binding records the version, path, display name (editable alias), default script, and command prefix.
+
+### Dev Server
+A child process started from a bound project by the Rust backend using the project's package manager (npm/pnpm/yarn) and default script. Stdout/stderr are streamed to the frontend via Tauri events and buffered per-path (max 1000 lines).
+
+### Git Branch Switching
+Display and switching of git branches within a bound project. The Rust backend shells out to `git branch` for listing and `git checkout` for switching. The current branch is displayed inline below the project path. Switching is guarded: if a dev server is running, the user is prompted to stop it first. Only local branches are shown; no auto-stash or fetch is performed.
+
 ## Supported Platforms
 - macOS (status bar icon via system-tray plugin, popup window)
 - Windows (system tray icon, popup window, runs with admin privileges for symlink creation)

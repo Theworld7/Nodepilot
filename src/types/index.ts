@@ -20,3 +20,12 @@ export interface ProjectConfig {
   default_script: string | null
   command_prefix: string | null
 }
+
+export interface GitBranchInfo {
+  name: string
+  is_current: boolean
+}
+
+export interface GitBranches {
+  branches: GitBranchInfo[]
+}

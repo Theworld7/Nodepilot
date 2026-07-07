@@ -707,6 +707,71 @@ pub fn cleanup_all_servers(state: &AppState) {
     }
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct GitBranch {
+    pub name: String,
+    pub is_current: bool,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct GitBranches {
+    pub branches: Vec<GitBranch>,
+}
+
+#[tauri::command]
+pub async fn list_git_branches(path: String) -> Result<GitBranches, AppError> {
+    let output = tokio::process::Command::new("git")
+        .args(["branch"])
+        .current_dir(&path)
+        .output()
+        .await
+        .map_err(|e| AppError::Io(format!("git branch failed: {e}")))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(AppError::Io(format!("git branch: {stderr}")));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let branches: Vec<GitBranch> = stdout
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                return None;
+            }
+            let is_current = trimmed.starts_with("* ");
+            let name = if is_current {
+                trimmed[2..].to_string()
+            } else {
+                trimmed.to_string()
+            };
+            Some(GitBranch { name, is_current })
+        })
+        .collect();
+
+    Ok(GitBranches { branches })
+}
+
+#[tauri::command]
+pub async fn checkout_branch(path: String, branch: String) -> Result<(), AppError> {
+    let output = tokio::process::Command::new("git")
+        .args(["checkout", &branch])
+        .current_dir(&path)
+        .output()
+        .await
+        .map_err(|e| AppError::Io(format!("git checkout failed: {e}")))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let msg = if stderr.is_empty() { stdout } else { stderr };
+        return Err(AppError::Io(msg.trim().to_string()));
+    }
+
+    Ok(())
+}
+
 struct NopSink;
 
 impl EventSink for NopSink {

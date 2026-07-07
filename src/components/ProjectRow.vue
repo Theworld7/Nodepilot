@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, reactive, nextTick } from "vue"
+import { ref, reactive, nextTick, onMounted } from "vue"
 import { invoke } from "@tauri-apps/api/core"
-import type { ProjectInfo } from "../types"
+import { MessagePlugin } from "tdesign-vue-next"
+import type { ProjectInfo, GitBranches, GitBranchInfo } from "../types"
 
 interface Props {
   project: ProjectInfo
@@ -10,6 +11,55 @@ interface Props {
 }
 
 const props = defineProps<Props>()
+
+// ---- 分支切换 ----
+const branches = ref<GitBranchInfo[]>([])
+const branchLoading = ref(false)
+const switchingTo = ref<string | null>(null)
+const branchPopupVisible = ref(false)
+
+function currentBranch(): GitBranchInfo | undefined {
+  return branches.value.find((b) => b.is_current)
+}
+
+async function loadBranches() {
+  branchLoading.value = true
+  try {
+    const result = await invoke<GitBranches>("list_git_branches", {
+      path: props.project.path,
+    })
+    branches.value = result.branches
+  } catch {
+    branches.value = []
+  } finally {
+    branchLoading.value = false
+  }
+}
+
+async function handleCheckout(branch: GitBranchInfo) {
+  if (branch.is_current) {
+    branchPopupVisible.value = false
+    return
+  }
+  switchingTo.value = branch.name
+  try {
+    await invoke("checkout_branch", {
+      path: props.project.path,
+      branch: branch.name,
+    })
+    await loadBranches()
+    branchPopupVisible.value = false
+  } catch (e: unknown) {
+    const msg = typeof e === "string" ? e : (e as Error).message || String(e)
+    MessagePlugin.error(msg)
+  } finally {
+    switchingTo.value = null
+  }
+}
+
+onMounted(() => {
+  loadBranches()
+})
 
 const emit = defineEmits<{
   start: [project: ProjectInfo]
@@ -166,6 +216,41 @@ function cancelSettings() {
           </t-button>
         </div>
         <span class="project-path">{{ project.path }}</span>
+        <!-- 分支切换 -->
+        <div v-if="branches.length > 0" class="branch-line">
+          <t-popup
+            v-model:visible="branchPopupVisible"
+            placement="bottom-left"
+            trigger="click"
+            :disabled="props.running"
+          >
+            <span class="branch-trigger">
+              <span class="branch-icon">&#x1f33f;</span>
+              <span class="branch-name">{{ currentBranch()?.name }}</span>
+              <ChevronDownIcon class="branch-chevron" />
+            </span>
+            <template #content>
+              <div v-if="props.running" class="branch-popup-warn">
+                请先停止 Dev Server
+              </div>
+              <div v-else class="branch-popup">
+                <div
+                  v-for="b in branches"
+                  :key="b.name"
+                  class="branch-item"
+                  :class="{
+                    'branch-item--current': b.is_current,
+                    'branch-item--switching': switchingTo === b.name,
+                  }"
+                  @click="handleCheckout(b)"
+                >
+                  <span class="branch-item-name">{{ b.name }}</span>
+                  <CheckIcon v-if="b.is_current" class="branch-item-check" />
+                </div>
+              </div>
+            </template>
+          </t-popup>
+        </div>
       </div>
 
       <!-- 右侧：启动 / 停止 / 删除按钮 -->
@@ -362,6 +447,98 @@ function cancelSettings() {
 
 .settings-form :deep(.t-form__item) {
   margin-bottom: 20px;
+}
+
+/* ---- 分支切换 ---- */
+.branch-line {
+  margin-top: 2px;
+}
+
+.branch-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text);
+  cursor: pointer;
+  padding: 1px 6px 1px 4px;
+  border-radius: 4px;
+  background: var(--bg);
+  transition: background 0.15s;
+  user-select: none;
+}
+
+.branch-trigger:hover {
+  background: var(--border);
+}
+
+.branch-icon {
+  font-size: 11px;
+  line-height: 1;
+}
+
+.branch-name {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.branch-chevron {
+  font-size: 10px;
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+.branch-popup {
+  display: flex;
+  flex-direction: column;
+  min-width: 140px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.branch-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.1s;
+  gap: 12px;
+}
+
+.branch-item:hover {
+  background: var(--bg);
+}
+
+.branch-item--current {
+  color: var(--brand);
+  font-weight: 500;
+}
+
+.branch-item--switching {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.branch-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.branch-item-check {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.branch-popup-warn {
+  padding: 12px 16px;
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
 }
 
 .settings-script-select {
