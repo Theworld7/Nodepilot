@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+#[allow(dead_code)]
 pub trait FileSystem: Send + Sync {
     fn create_dir_all(&self, path: &Path) -> Result<(), std::io::Error>;
     fn write(&self, path: &Path, data: &[u8]) -> Result<(), std::io::Error>;
@@ -56,7 +57,16 @@ impl FileSystem for FsProd {
         #[cfg(windows)]
         {
             if target.is_dir() {
-                std::os::windows::fs::symlink_dir(target, link)?;
+                match std::os::windows::fs::symlink_dir(target, link) {
+                    Ok(()) => {}
+                    Err(e) => {
+                        if e.raw_os_error() == Some(1314) || link.exists() {
+                            windows_junction_set(link, target)?;
+                        } else {
+                            return Err(e);
+                        }
+                    }
+                }
             } else {
                 std::os::windows::fs::symlink_file(target, link)?;
             }
@@ -80,6 +90,160 @@ impl FileSystem for FsProd {
         path.is_dir()
     }
 }
+
+// ---------------------------------------------------------------------------
+// Windows NTFS Junction helpers (raw FFI — zero dependency)
+// ---------------------------------------------------------------------------
+
+#[cfg(windows)]
+mod junction {
+    use std::io;
+    use std::os::windows::ffi::OsStrExt;
+    use std::path::Path;
+
+    // Win32 constants
+    const DELETE: u32 = 0x00010000;
+    const GENERIC_WRITE: u32 = 0x40000000;
+    const FILE_SHARE_READ: u32 = 1;
+    const FILE_SHARE_WRITE: u32 = 2;
+    const FILE_SHARE_DELETE: u32 = 4;
+    const OPEN_EXISTING: u32 = 3;
+    const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x02000000;
+    const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x00200000;
+
+    const FSCTL_DELETE_REPARSE_POINT: u32 = 0x0009_00AC;
+    const IO_REPARSE_TAG_MOUNT_POINT: u32 = 0xA000_0003;
+
+    type HANDLE = isize;
+
+    extern "system" {
+        fn CreateFileW(
+            lpFileName: *const u16,
+            dwDesiredAccess: u32,
+            dwShareMode: u32,
+            lpSecurityAttributes: *const std::ffi::c_void,
+            dwCreationDisposition: u32,
+            dwFlagsAndAttributes: u32,
+            hTemplateFile: HANDLE,
+        ) -> HANDLE;
+
+        fn DeviceIoControl(
+            hDevice: HANDLE,
+            dwIoControlCode: u32,
+            lpInBuffer: *const std::ffi::c_void,
+            nInBufferSize: u32,
+            lpOutBuffer: *mut std::ffi::c_void,
+            nOutBufferSize: u32,
+            lpBytesReturned: *mut u32,
+            lpOverlapped: *mut std::ffi::c_void,
+        ) -> i32;
+
+        fn CloseHandle(hObject: HANDLE) -> i32;
+
+        fn DeleteFileW(lpFileName: *const u16) -> i32;
+
+        fn RemoveDirectoryW(lpPathName: *const u16) -> i32;
+    }
+
+    /// Set (or update) an NTFS Junction at `link` pointing to `target`.
+    ///
+    /// Works regardless of what already exists at `link` — symlink,
+    /// Junction, regular directory, or nothing.
+    pub fn set(link: &Path, target: &Path) -> io::Result<()> {
+        // Resolve target to absolute path.
+        let _target_abs = std::fs::canonicalize(target)?;
+
+        let link_wide: Vec<u16> = link
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+
+        // ── Phase 1: strip any existing reparse point and remove ─────
+        if link.exists() {
+            let h = unsafe {
+                CreateFileW(
+                    link_wide.as_ptr(),
+                    DELETE | GENERIC_WRITE,
+                    FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                    std::ptr::null(),
+                    OPEN_EXISTING,
+                    FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+                    0,
+                )
+            };
+            if h != -1 {
+                // Strip both mount-point and symlink reparse tags.
+                let mut _ret: u32 = 0;
+                unsafe {
+                    let mut del = std::mem::zeroed::<DeleteReparseBuffer>();
+                    del.ReparseTag = IO_REPARSE_TAG_MOUNT_POINT;
+                    DeviceIoControl(
+                        h, FSCTL_DELETE_REPARSE_POINT,
+                        &del as *const _ as *const _,
+                        std::mem::size_of::<DeleteReparseBuffer>() as u32,
+                        std::ptr::null_mut(), 0, &mut _ret, std::ptr::null_mut(),
+                    );
+                    del.ReparseTag = 0xA000_000C; // IO_REPARSE_TAG_SYMLINK
+                    DeviceIoControl(
+                        h, FSCTL_DELETE_REPARSE_POINT,
+                        &del as *const _ as *const _,
+                        std::mem::size_of::<DeleteReparseBuffer>() as u32,
+                        std::ptr::null_mut(), 0, &mut _ret, std::ptr::null_mut(),
+                    );
+                }
+                unsafe { CloseHandle(h) };
+            }
+            // Remove whatever remains (file symlink → file, junction → directory).
+            if link.is_dir() {
+                unsafe { let _ = RemoveDirectoryW(link_wide.as_ptr()); }
+            } else {
+                unsafe { let _ = DeleteFileW(link_wide.as_ptr()); }
+            }
+        }
+
+        if link.exists() {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!(
+                    "无法删除旧的版本链接 ({})。\
+                     请关闭正在使用 Node.js 的终端后重试。",
+                    link.display(),
+                ),
+            ));
+        }
+
+        // ── Phase 2: create fresh junction via mklink /J ──────────────
+        let result = std::process::Command::new("cmd")
+            .args(["/c", "mklink", "/J"])
+            .arg(link)
+            .arg(target)
+            .output();
+
+        match result {
+            Ok(out) if out.status.success() => Ok(()),
+            Ok(out) => {
+                let msg = String::from_utf8_lossy(&out.stderr);
+                log::error!("[junction] mklink /J failed: {}", msg.trim());
+                Err(io::Error::new(io::ErrorKind::Other, msg.trim().to_string()))
+            }
+            Err(e) => {
+                log::error!("[junction] mklink spawn failed: {e}");
+                Err(e)
+            }
+        }
+    }
+
+    #[repr(C)]
+    #[allow(non_snake_case)]
+    struct DeleteReparseBuffer {
+        ReparseTag: u32,
+        ReparseDataLength: u16,
+        Reserved: u16,
+    }
+}
+
+use junction::set as windows_junction_set;
 
 #[cfg(test)]
 pub mod mock {

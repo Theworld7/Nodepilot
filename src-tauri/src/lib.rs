@@ -9,6 +9,7 @@ mod version;
 use std::sync::Arc;
 
 use commands::AppState;
+use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::Manager;
 use tauri::WindowEvent;
@@ -101,6 +102,7 @@ pub fn run() {
             }
 
             {
+                #[cfg_attr(not(target_os = "macos"), allow(unused_mut))]
                 let mut autostart = tauri_plugin_autostart::Builder::default();
                 #[cfg(target_os = "macos")]
                 {
@@ -142,6 +144,15 @@ pub fn run() {
             let _tray = TrayIconBuilder::with_id("main")
                 .tooltip("nodepilot")
                 .icon(tray_icon)
+                .menu(&{
+                    let quit = MenuItemBuilder::with_id("quit", "退出").build(app)?;
+                    MenuBuilder::new(app).item(&quit).build()?
+                })
+                .on_menu_event(|app, event| {
+                    if event.id() == "quit" {
+                        app.exit(0);
+                    }
+                })
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click {
                         button: MouseButton::Left,

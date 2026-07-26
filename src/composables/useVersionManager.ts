@@ -2,6 +2,7 @@ import { ref, onMounted, onUnmounted } from "vue"
 import { invoke } from "@tauri-apps/api/core"
 import { listen } from "@tauri-apps/api/event"
 import type { UnlistenFn } from "@tauri-apps/api/event"
+import { MessagePlugin } from "tdesign-vue-next"
 import type { NodeVersion } from "../types"
 
 export function useVersionManager() {
@@ -19,7 +20,9 @@ export function useVersionManager() {
   function mergeWithLocal(remote: NodeVersion[]): NodeVersion[] {
     return remote.map((rv) => {
       const local = versions.value.find((v) => v.version === rv.version)
-      return local ?? rv
+      // Spread remote OVER local so backend-managed fields
+      // (active, installed, …) always reflect reality.
+      return local ? { ...local, ...rv } : rv
     })
   }
 
@@ -66,11 +69,26 @@ export function useVersionManager() {
   async function onActivate(v: NodeVersion) {
     try {
       await invoke("activate_version", { version: v.version })
-      const current = versions.value.find((x) => x.active)
-      if (current) current.active = false
-      v.active = true
-    } catch (e) {
-      console.error("activate failed:", e)
+      // State is updated by the versions_updated event from the backend
+      // — no manual state manipulation needed here.
+    } catch (e: unknown) {
+      const msg: string =
+        typeof e === "string"
+          ? e
+          : String((e as Record<string, unknown>)?.message ?? e)
+
+      if (msg.includes("权限") || msg.includes("管理员") || msg.includes("开发者模式")) {
+        MessagePlugin.error({
+          content:
+            "需要管理员权限或开启开发者模式。请在 Windows 设置 → 隐私和安全性 → 开发者选项 → 开启\"开发人员模式\"后重试。",
+          duration: 8000,
+        })
+      } else {
+        MessagePlugin.error(`切换版本失败: ${msg}`)
+      }
+
+      // Reload from backend to ensure UI state matches reality
+      await loadVersions()
     }
   }
 

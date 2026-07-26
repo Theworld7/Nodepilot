@@ -472,17 +472,15 @@ pub async fn start_dev_server(
     //
     // 诊断开关：设置环境变量 NODEPILOT_NO_PTY=1 可跳过 script PTY 包装，
     // 用于对比测试 PTY 是否是进程退出的根因。
-    let no_pty = std::env::var("NODEPILOT_NO_PTY").map(|v| v == "1").unwrap_or(false);
-    let pty_program;
     let use_pty: bool;
     #[cfg(target_os = "macos")]
     {
-        pty_program = "/usr/bin/script";
-        use_pty = !no_pty && std::path::Path::new(pty_program).exists();
+        let _no_pty = std::env::var("NODEPILOT_NO_PTY").map(|v| v == "1").unwrap_or(false);
+        let _pty_program = "/usr/bin/script";
+        use_pty = !_no_pty && std::path::Path::new(_pty_program).exists();
     }
     #[cfg(not(target_os = "macos"))]
     {
-        pty_program = "";
         use_pty = false;
     }
 
@@ -559,7 +557,6 @@ pub async fn start_dev_server(
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
-        .process_group(0)
         .spawn()
         .map_err(|e| AppError::Io(format!("failed to start dev server: {e}")))?;
 

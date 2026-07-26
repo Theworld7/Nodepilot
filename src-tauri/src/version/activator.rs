@@ -66,18 +66,37 @@ impl VersionActivator {
 
         let current = self.current_symlink();
 
-        if let Ok(meta) = self.fs.symlink_metadata(&current) {
-            if meta.file_type().is_symlink() {
-                self.fs.remove_file(&current)?;
-            } else {
-                return Err(VersionManagerError::Io(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "current is not a symlink",
-                )));
+        if let Ok(_meta) = self.fs.symlink_metadata(&current) {
+            #[cfg(windows)]
+            {
+                // Skip manual removal — junction::set() handles any
+                // existing reparse point via DeviceIoControl, which
+                // does NOT require symlink privileges.
+            }
+            #[cfg(not(windows))]
+            {
+                if meta.file_type().is_symlink() {
+                    self.fs.remove_file(&current)?;
+                } else {
+                    return Err(VersionManagerError::Io(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        "current is not a symlink",
+                    )));
+                }
             }
         }
 
-        self.fs.symlink(&version_dir, &current)?;
+        self.fs.symlink(&version_dir, &current).map_err(|e| {
+            match e.raw_os_error() {
+                Some(1314) => VersionManagerError::Io(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "需要管理员权限或开启开发者模式才能创建符号链接。\
+                     请在 Windows 设置 → 隐私和安全性 → 开发者选项 → \
+                     开启\"开发人员模式\"，然后重试。",
+                )),
+                _ => VersionManagerError::Io(e),
+            }
+        })?;
 
         Ok(())
     }

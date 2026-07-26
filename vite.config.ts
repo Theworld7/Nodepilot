@@ -8,14 +8,14 @@ export default defineConfig({
   plugins: [
     vue(),
     AutoImport({
-      dts: '/Users/finn/Documents/Code/nodepilot/node_modules/.tmp/auto-imports.d.ts',
+      dts: 'node_modules/.tmp/auto-imports.d.ts',
       resolvers: [TDesignResolver({
         library: 'vue-next',
         resolveIcons: true,
       })],
     }),
     Components({
-      dts: '/Users/finn/Documents/Code/nodepilot/node_modules/.tmp/components.d.ts',
+      dts: 'node_modules/.tmp/components.d.ts',
       resolvers: [TDesignResolver({
         library: 'vue-next',
         resolveIcons: true,
@@ -25,5 +25,8 @@ export default defineConfig({
   server: {
     port: 5199,
     strictPort: true,
+    watch: {
+      ignored: ['**/src-tauri/target/**'],
+    },
   },
 })
