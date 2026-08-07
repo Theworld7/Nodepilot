@@ -550,13 +550,22 @@ pub async fn start_dev_server(
     // 时会关闭 PTY → 子进程（Vite 等）的 stdin 也关闭 → Vite 在 stdin 关闭时主动退出（code=0）。
     // 设置 piped stdin 后，写入端由 Child 持有，只要 Child 存活 pipe 就保持打开，
     // script 会阻塞等待 stdin 输入，PTY 不会关闭，Vite 持续运行。
-    let mut child = tokio::process::Command::new(program)
-        .args(&args)
+    let mut cmd = tokio::process::Command::new(program);
+    cmd.args(&args)
         .current_dir(&project_dir)
         .env("PATH", &new_path)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+
+    // Windows 下 GUI 应用 spawn 控制台程序（npm.cmd / node 等）会弹出新的命令窗口，
+    // CREATE_NO_WINDOW (0x08000000) 让子进程在后台运行、不显示窗口，与 macOS 行为一致。
+    #[cfg(target_os = "windows")]
+    {
+        cmd.creation_flags(0x0800_0000);
+    }
+
+    let mut child = cmd
         .spawn()
         .map_err(|e| AppError::Io(format!("failed to start dev server: {e}")))?;
 
@@ -717,11 +726,13 @@ pub struct GitBranches {
 
 #[tauri::command]
 pub async fn list_git_branches(path: String) -> Result<GitBranches, AppError> {
-    let output = tokio::process::Command::new("git")
-        .args(["branch"])
-        .current_dir(&path)
-        .output()
-        .await
+    let mut cmd = tokio::process::Command::new("git");
+    cmd.args(["branch"]).current_dir(&path);
+    #[cfg(target_os = "windows")]
+    {
+        cmd.creation_flags(0x0800_0000);
+    }
+    let output = cmd.output().await
         .map_err(|e| AppError::Io(format!("git branch failed: {e}")))?;
 
     if !output.status.success() {
@@ -752,11 +763,13 @@ pub async fn list_git_branches(path: String) -> Result<GitBranches, AppError> {
 
 #[tauri::command]
 pub async fn checkout_branch(path: String, branch: String) -> Result<(), AppError> {
-    let output = tokio::process::Command::new("git")
-        .args(["checkout", &branch])
-        .current_dir(&path)
-        .output()
-        .await
+    let mut cmd = tokio::process::Command::new("git");
+    cmd.args(["checkout", &branch]).current_dir(&path);
+    #[cfg(target_os = "windows")]
+    {
+        cmd.creation_flags(0x0800_0000);
+    }
+    let output = cmd.output().await
         .map_err(|e| AppError::Io(format!("git checkout failed: {e}")))?;
 
     if !output.status.success() {

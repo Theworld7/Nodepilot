@@ -214,11 +214,15 @@ mod junction {
         }
 
         // ── Phase 2: create fresh junction via mklink /J ──────────────
-        let result = std::process::Command::new("cmd")
-            .args(["/c", "mklink", "/J"])
-            .arg(link)
-            .arg(target)
-            .output();
+        let mut cmd = std::process::Command::new("cmd");
+        cmd.args(["/c", "mklink", "/J"]).arg(link).arg(target);
+        // 隐藏 mklink 弹出的命令窗口
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+        }
+        let result = cmd.output();
 
         match result {
             Ok(out) if out.status.success() => Ok(()),
