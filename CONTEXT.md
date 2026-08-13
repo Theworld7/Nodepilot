@@ -36,6 +36,9 @@ A compact desktop window (500×700) containing the version list. Implemented as 
 ### Version List
 Flat list of all known Node.js versions, filterable by major version number. Shows version number, install status, release date, and LTS label.
 
+### Log View
+A separate window (opened from a bound project) showing that project's dev-server output as a scrolling, line-numbered log. URLs in the output are rendered as links that open in the system browser.
+
 ## System Interactions
 
 ### Version Source

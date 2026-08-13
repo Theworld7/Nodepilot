@@ -5,6 +5,7 @@ import { listen } from "@tauri-apps/api/event";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { open, confirm } from "@tauri-apps/plugin-dialog";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { MessagePlugin } from "tdesign-vue-next";
 import type { NodeVersion, ProjectInfo } from "../types";
 import ProjectRow from "./ProjectRow.vue";
 
@@ -64,6 +65,11 @@ async function handleStart(p: ProjectInfo) {
     runningServers.value = new Set(runningServers.value).add(p.path);
   } catch (e) {
     console.error("start dev server failed:", e);
+    // 后端已有该服务在运行（前端状态丢失或重复点击）→ 同步 UI 状态并提示
+    if (String(e).includes("server already running")) {
+      runningServers.value = new Set(runningServers.value).add(p.path);
+      MessagePlugin.info("服务已在运行");
+    }
   } finally {
     const next = new Set(startingServers.value);
     next.delete(p.path);
@@ -178,15 +184,25 @@ let unlistenStatus: UnlistenFn | null = null;
 onMounted(async () => {
   await loadProjects();
 
+  // 同步后端已运行的服务：窗口重开 / 组件重挂载 / 事件丢失后保持 UI 状态一致
+  try {
+    const running = await invoke<string[]>("get_running_servers");
+    runningServers.value = new Set(running);
+  } catch (e) {
+    console.error("load running servers failed:", e);
+  }
+
   // 监听进程退出事件：如果进程自行退出，同步更新 runningServers
   unlistenStatus = await listen<{ path: string; running: boolean }>(
     "dev_server_status",
     (event) => {
-      if (!event.payload.running) {
-        const next = new Set(runningServers.value);
+      const next = new Set(runningServers.value);
+      if (event.payload.running) {
+        next.add(event.payload.path);
+      } else {
         next.delete(event.payload.path);
-        runningServers.value = next;
       }
+      runningServers.value = next;
     },
   );
 });

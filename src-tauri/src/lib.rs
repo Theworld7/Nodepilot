@@ -89,6 +89,7 @@ pub fn run() {
             commands::start_dev_server,
             commands::stop_dev_server,
             commands::get_dev_server_logs,
+            commands::get_running_servers,
             commands::list_git_branches,
             commands::checkout_branch,
         ])
@@ -111,6 +112,7 @@ pub fn run() {
                 app.handle().plugin(autostart.build())?;
             }
             app.handle().plugin(tauri_plugin_dialog::init())?;
+            app.handle().plugin(tauri_plugin_opener::init())?;
 
             // Auto environment setup on first launch – try once silently.
             // If it fails, the frontend will show a dialog after the webview is ready.

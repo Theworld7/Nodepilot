@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core"
 import { listen } from "@tauri-apps/api/event"
 import type { UnlistenFn } from "@tauri-apps/api/event"
 import { MessagePlugin } from "tdesign-vue-next"
+import { openUrl } from "@tauri-apps/plugin-opener"
 
 const params = new URLSearchParams(window.location.search)
 const projectPath = params.get("path") || ""
@@ -77,7 +78,7 @@ function ansiToHtml(raw: string): string {
         }
       }
     } else {
-      html += escapeHtml(token)
+      html += escapeTextPreservingLinks(token)
     }
   }
 
@@ -85,7 +86,78 @@ function ansiToHtml(raw: string): string {
   return html
 }
 
-const renderedLogs = computed(() => logs.value.map((line) => ansiToHtml(line)))
+/** 链接注入的 <a> 标签不带真实 href（避免日志窗口被导航走），仅通过 data-href 携带目标。 */
+
+/**
+ * 在原始日志文本（含 ANSI 转义码）中识别 http/https 链接，并在链接首尾注入
+ * <a class="log-link" data-href="...">…</a>。
+ * 识别基于「剥离 ANSI 后的纯文本」再映射回原始文本位置，从而容忍链接内部夹杂
+ * ANSI 转义码（如 Vite 的彩色/加粗 Local 行）。
+ */
+function linkifyRaw(raw: string): string {
+  const plain: string[] = []
+  const rawPos: number[] = []
+  let i = 0
+  while (i < raw.length) {
+    if (raw[i] === "\x1b" && raw[i + 1] === "[") {
+      let j = i + 2
+      while (j < raw.length && !/[a-zA-Z]/.test(raw[j])) j++
+      i = j < raw.length ? j + 1 : raw.length
+      continue
+    }
+    plain.push(raw[i])
+    rawPos.push(i)
+    i++
+  }
+  const plainStr = plain.join("")
+  if (!plainStr) return raw
+
+  const urlRe = /https?:\/\/[^\s"'<>()[\]{}]+/gi
+  const injections: { at: number; tag: string }[] = []
+  let m: RegExpExecArray | null
+  while ((m = urlRe.exec(plainStr))) {
+    let end = m.index + m[0].length
+    while (end > m.index && /[.,;:!?]/.test(plainStr[end - 1])) end--
+    if (end <= m.index) continue
+    const href = plainStr.slice(m.index, end)
+    const startRaw = rawPos[m.index]
+    const endRaw = rawPos[end - 1] + 1
+    injections.push({
+      at: startRaw,
+      tag: `<a class="log-link" data-href="${escapeHtml(href)}">`,
+    })
+    injections.push({ at: endRaw, tag: "</a>" })
+  }
+  if (injections.length === 0) return raw
+
+  injections.sort((a, b) => a.at - b.at)
+  let out = ""
+  let cursor = 0
+  for (const inj of injections) {
+    out += raw.slice(cursor, inj.at)
+    out += inj.tag
+    cursor = inj.at
+  }
+  out += raw.slice(cursor)
+  return out
+}
+
+/** 转义普通文本，但保留注入的链接标签（<a class="log-link" …> 与 </a>）。 */
+function escapeTextPreservingLinks(s: string): string {
+  const re = /<a class="log-link" data-href="[^"]*">|<\/a>/g
+  let out = ""
+  let last = 0
+  let m: RegExpExecArray | null
+  while ((m = re.exec(s))) {
+    out += escapeHtml(s.slice(last, m.index))
+    out += m[0]
+    last = m.index + m[0].length
+  }
+  out += escapeHtml(s.slice(last))
+  return out
+}
+
+const renderedLogs = computed(() => logs.value.map((line) => ansiToHtml(linkifyRaw(line))))
 
 // --- 多选交互 ---
 
@@ -180,6 +252,17 @@ function toggleSelectAll() {
   lastClickedIndex.value = null
 }
 
+/** 点击日志中的链接：在系统默认浏览器打开，不触发日志窗口导航。 */
+function handleLogClick(e: MouseEvent) {
+  const target = e.target as Element | null
+  if (!target || typeof target.closest !== "function") return
+  const link = target.closest("a.log-link") as HTMLElement | null
+  const href = link?.dataset?.href
+  if (!href) return
+  e.preventDefault()
+  openUrl(href).catch((err) => console.warn("打开链接失败:", err))
+}
+
 onMounted(async () => {
   try {
     unlisten = await listen<{ path: string; line: string }>("dev_server_log", (event) => {
@@ -246,7 +329,7 @@ watch(logs, () => {
         </div>
       </div>
     </div>
-    <div ref="logContainer" class="log-body" :class="{ 'selection-mode': selectionMode }">
+    <div ref="logContainer" class="log-body" :class="{ 'selection-mode': selectionMode }" @click="handleLogClick">
       <div v-if="logs.length === 0" class="log-empty">等待日志...</div>
       <t-checkbox-group v-model="selectedIndices" class="log-checkbox-group">
         <div
@@ -444,6 +527,19 @@ watch(logs, () => {
   white-space: pre-wrap;
   word-break: break-all;
   color: #d4d4d4;
+}
+
+/* 日志中的可点击链接。
+   注意：链接是 v-html 注入的元素，不带组件作用域属性，scoped 选择器命中不了，
+   必须用 :deep 穿透作用域才能应用样式。 */
+.log-body :deep(.log-link) {
+  color: #4fc1ff;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.log-body :deep(.log-link:hover) {
+  color: #7ad0ff;
 }
 
 /* 暗色背景下的按钮文字强制浅色 */

@@ -695,6 +695,12 @@ pub async fn stop_dev_server(
 }
 
 #[tauri::command]
+pub fn get_running_servers(state: State<'_, AppState>) -> Result<Vec<String>, AppError> {
+    let servers = state.servers.lock().unwrap();
+    Ok(servers.keys().cloned().collect())
+}
+
+#[tauri::command]
 pub fn get_dev_server_logs(state: State<'_, AppState>, path: String) -> Result<Vec<String>, AppError> {
     let buffers = state.log_buffers.lock().unwrap();
     Ok(buffers.get(&path).cloned().unwrap_or_default())
