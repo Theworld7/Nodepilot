@@ -14,11 +14,13 @@ export interface ProjectInfo {
   version: string
   default_script?: string | null
   command_prefix?: string | null
+  start_command?: string | null
 }
 
 export interface ProjectConfig {
   default_script: string | null
   command_prefix: string | null
+  start_command: string | null
 }
 
 export interface GitBranchInfo {

@@ -117,6 +117,7 @@ const scripts = ref<Record<string, string>>({})
 const formData = reactive({
   selectedScript: "",
   prefixInput: "",
+  customCommand: "",
 })
 const loadingScripts = ref(false)
 
@@ -125,6 +126,7 @@ async function openSettings() {
   scripts.value = {}
   formData.selectedScript = ""
   formData.prefixInput = ""
+  formData.customCommand = ""
 
   // 预填已保存的配置
   if (props.project.default_script) {
@@ -132,6 +134,9 @@ async function openSettings() {
   }
   if (props.project.command_prefix) {
     formData.prefixInput = props.project.command_prefix
+  }
+  if (props.project.start_command) {
+    formData.customCommand = props.project.start_command
   }
 
   try {
@@ -162,12 +167,14 @@ async function openSettings() {
 async function saveSettings() {
   const script = formData.selectedScript.trim() || null
   const prefix = formData.prefixInput.trim() || null
+  const startCommand = formData.customCommand.trim() || null
   try {
     await invoke("update_project_config", {
       version: props.project.version,
       path: props.project.path,
       defaultScript: script,
       commandPrefix: prefix,
+      startCommand,
     })
     emit("updateConfig")
   } catch (e) {
@@ -302,7 +309,12 @@ function cancelSettings() {
     </div>
 
     <!-- 项目设置 Drawer -->
-    <t-drawer v-model:visible="showSettings" placement="bottom" header="项目配置">
+    <t-drawer
+      v-model:visible="showSettings"
+      placement="bottom"
+      header="项目配置"
+      size="440px"
+    >
       <!-- 加载中 -->
       <div v-if="loadingScripts" class="settings-loading">
         <LoadingSpinner />
@@ -350,6 +362,17 @@ function cancelSettings() {
             placeholder="可选，如 tauri"
             clearable
           />
+        </t-form-item>
+
+        <t-form-item label="自定义启动命令" name="customCommand">
+          <t-input
+            v-model="formData.customCommand"
+            placeholder="可选，如 dsh web / pnpm dsh web"
+            clearable
+          />
+          <div class="settings-hint">
+            设置后 ▶ 将原样执行该命令（在项目目录下），并优先于「默认执行命令 + 命令前缀」
+          </div>
         </t-form-item>
       </t-form>
 
@@ -569,6 +592,16 @@ function cancelSettings() {
   font-size: 12px;
   color: var(--text-light);
   margin: 8px 0;
+}
+
+/* 自定义启动命令的提示：位于输入框下方、独立一行 */
+.settings-hint {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-light);
 }
 
 .settings-custom-input {

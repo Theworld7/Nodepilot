@@ -40,6 +40,16 @@ async function handleStart(p: ProjectInfo) {
   try {
     startingServers.value = new Set(startingServers.value).add(p.path);
 
+    // 自定义启动命令优先：原样执行（如 `dsh web` / `pnpm dsh web`）
+    if (p.start_command && p.start_command.trim()) {
+      await invoke("start_dev_server", {
+        path: p.path,
+        command: p.start_command.trim(),
+      });
+      runningServers.value = new Set(runningServers.value).add(p.path);
+      return;
+    }
+
     let script = p.default_script || undefined;
     // 未配置时 fallback 到 package.json 的 dev 脚本
     if (!script) {

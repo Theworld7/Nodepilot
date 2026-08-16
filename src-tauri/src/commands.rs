@@ -115,6 +115,8 @@ pub struct ProjectBinding {
     pub default_script: Option<String>,
     #[serde(default)]
     pub command_prefix: Option<String>,
+    #[serde(default)]
+    pub start_command: Option<String>,
 }
 
 struct TauriEventSink<'a> {
@@ -333,6 +335,7 @@ pub fn bind_project(
         path,
         default_script: None,
         command_prefix: None,
+        start_command: None,
     });
     let data =
         serde_json::to_string_pretty(&projects).map_err(|e| AppError::Config(e.to_string()))?;
@@ -394,11 +397,13 @@ pub fn update_project_config(
     path: String,
     default_script: Option<String>,
     command_prefix: Option<String>,
+    start_command: Option<String>,
 ) -> Result<(), AppError> {
     let mut projects = read_projects(&state.projects_path);
     if let Some(p) = projects.iter_mut().find(|p| p.version == version && p.path == path) {
         p.default_script = default_script;
         p.command_prefix = command_prefix;
+        p.start_command = start_command;
     } else {
         return Err(AppError::NotFound("project binding not found".to_string()));
     }
