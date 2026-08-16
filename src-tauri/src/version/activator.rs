@@ -66,23 +66,22 @@ impl VersionActivator {
 
         let current = self.current_symlink();
 
-        if let Ok(_meta) = self.fs.symlink_metadata(&current) {
-            #[cfg(windows)]
-            {
-                // Skip manual removal — junction::set() handles any
-                // existing reparse point via DeviceIoControl, which
-                // does NOT require symlink privileges.
-            }
-            #[cfg(not(windows))]
-            {
-                if meta.file_type().is_symlink() {
-                    self.fs.remove_file(&current)?;
-                } else {
-                    return Err(VersionManagerError::Io(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        "current is not a symlink",
-                    )));
-                }
+        #[cfg(windows)]
+        if let Ok(_) = self.fs.symlink_metadata(&current) {
+            // Skip manual removal — junction::set() handles any
+            // existing reparse point via DeviceIoControl, which
+            // does NOT require symlink privileges.
+        }
+
+        #[cfg(not(windows))]
+        if let Ok(meta) = self.fs.symlink_metadata(&current) {
+            if meta.file_type().is_symlink() {
+                self.fs.remove_file(&current)?;
+            } else {
+                return Err(VersionManagerError::Io(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "current is not a symlink",
+                )));
             }
         }
 

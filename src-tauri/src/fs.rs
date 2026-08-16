@@ -247,6 +247,7 @@ mod junction {
     }
 }
 
+#[cfg(windows)]
 use junction::set as windows_junction_set;
 
 #[cfg(test)]
