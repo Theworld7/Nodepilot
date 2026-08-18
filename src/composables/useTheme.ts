@@ -12,6 +12,9 @@ const isDark = ref(getInitialTheme())
 
 function applyTheme(dark: boolean) {
   document.documentElement.classList.toggle('dark', dark)
+  // Sync tdesign-vue-next theme-mode so component library styles follow the
+  // user's choice instead of its built-in prefers-color-scheme media query.
+  document.documentElement.setAttribute('theme-mode', dark ? 'dark' : 'light')
   localStorage.setItem(STORAGE_KEY, dark ? 'dark' : 'light')
 }
 
