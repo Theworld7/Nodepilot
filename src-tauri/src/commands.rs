@@ -690,6 +690,119 @@ pub async fn start_dev_server(
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// 进程树终止
+//
+// 背景：macOS 上 dev server 用 `script` PTY 包装，`script` 的 forkpty 会让内层
+// sh 通过 setsid 进入**新的进程组**，因此 `kill -- -<pid>`（杀进程组）无法命中
+// 内层进程树，退出应用后会残留孤儿服务。这里改为递归遍历进程树：
+//   1. `ps -axo pid=,ppid=` 一次性建立父子关系，BFS 收集以 root 为根的整棵树
+//   2. 先向所有进程发 SIGTERM（子→父顺序），轮询宽限 ~1.5s
+//   3. 仍未退出的升级 SIGKILL
+// Windows 使用 taskkill /T（递归结束进程树）。
+// ---------------------------------------------------------------------------
+
+#[cfg(unix)]
+fn collect_process_tree(root: u32) -> Vec<u32> {
+    use std::collections::{HashMap, HashSet};
+    let mut children: HashMap<u32, Vec<u32>> = HashMap::new();
+    if let Ok(out) = std::process::Command::new("ps")
+        .args(["-axo", "pid=,ppid="])
+        .output()
+    {
+        let text = String::from_utf8_lossy(&out.stdout);
+        for line in text.lines() {
+            let mut it = line.split_whitespace();
+            if let (Some(pid), Some(ppid)) = (
+                it.next().and_then(|s| s.parse::<u32>().ok()),
+                it.next().and_then(|s| s.parse::<u32>().ok()),
+            ) {
+                children.entry(ppid).or_default().push(pid);
+            }
+        }
+    }
+    let mut pids = vec![root];
+    let mut seen = HashSet::new();
+    seen.insert(root);
+    let mut i = 0;
+    while i < pids.len() {
+        if let Some(kids) = children.get(&pids[i]) {
+            for &k in kids {
+                if seen.insert(k) {
+                    pids.push(k);
+                }
+            }
+        }
+        i += 1;
+    }
+    pids
+}
+
+#[cfg(unix)]
+fn is_alive(pid: u32) -> bool {
+    // 进程不存在 → 已死
+    let exists = std::process::Command::new("kill")
+        .arg("-0")
+        .arg(pid.to_string())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if !exists {
+        return false;
+    }
+    // 僵尸进程（stat 含 Z）已无法被信号杀死，视为已死
+    std::process::Command::new("ps")
+        .args(["-o", "stat=", "-p", &pid.to_string()])
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8_lossy(&o.stdout).lines().next().map(|s| s.to_string()))
+        .map(|stat| !stat.contains('Z'))
+        .unwrap_or(true)
+}
+
+#[cfg(unix)]
+fn send_signal(pids: &[u32], sig: &str) {
+    if pids.is_empty() {
+        return;
+    }
+    let mut cmd = std::process::Command::new("kill");
+    cmd.arg(format!("-{sig}"));
+    for p in pids {
+        cmd.arg(p.to_string());
+    }
+    let _ = cmd.output();
+}
+
+/// 结束以 root 为根的整棵进程树（含 root 自身）。Unix 上 TERM → KILL 升级，
+/// Windows 上 taskkill /T /F 一步到位。
+pub fn kill_process_tree(root: u32) {
+    #[cfg(windows)]
+    {
+        let pid_str = root.to_string();
+        let _ = std::process::Command::new("taskkill")
+            .args(["/PID", pid_str.as_str(), "/T", "/F"])
+            .output();
+    }
+    #[cfg(unix)]
+    {
+        let pids = collect_process_tree(root);
+        // 先子后父：避免父进程先退出、子进程被 reparent 后再被信号漏杀
+        let reversed: Vec<u32> = pids.iter().rev().copied().collect();
+        send_signal(&reversed, "TERM");
+        // 宽限期轮询，最多 ~1.5s
+        for _ in 0..30 {
+            if !pids.iter().any(|&p| is_alive(p)) {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        let stubborn: Vec<u32> = pids.iter().copied().filter(|&p| is_alive(p)).collect();
+        if !stubborn.is_empty() {
+            send_signal(&stubborn, "KILL");
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn stop_dev_server(
     app: AppHandle,
@@ -702,10 +815,7 @@ pub async fn stop_dev_server(
     };
 
     if let Some(pid) = pid {
-        let _ = std::process::Command::new("kill")
-            .arg("--")
-            .arg(format!("-{pid}"))
-            .output();
+        kill_process_tree(pid);
     }
 
     let _ = app.emit("dev_server_status", serde_json::json!({
@@ -742,10 +852,7 @@ pub fn cleanup_all_servers(state: &AppState) {
     servers.clear();
     drop(servers);
     for pid in pids {
-        let _ = std::process::Command::new("kill")
-            .arg("--")
-            .arg(format!("-{pid}"))
-            .output();
+        kill_process_tree(pid);
     }
 }
 
@@ -900,4 +1007,44 @@ struct NopSink;
 
 impl EventSink for NopSink {
     fn emit(&self, _event: VersionEvent) {}
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod process_tree_tests {
+    use super::*;
+
+    /// 复刻应用真实启动路径：`script -q /dev/null sh -c 'sleep ... | cmd'`。
+    /// 验证 kill_process_tree 能结束 script 内层（setsid 后的新进程组）的整棵进程树。
+    #[test]
+    fn kill_process_tree_kills_script_wrapped_tree() {
+        let mut child = std::process::Command::new("script")
+            .args([
+                "-q",
+                "/dev/null",
+                "sh",
+                "-c",
+                "sleep 2147483647 | node -e \"setInterval(()=>{},1000)\"",
+            ])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("spawn script wrapper");
+        let root = child.id();
+        // 等 sh / node / sleep 全部就绪
+        std::thread::sleep(std::time::Duration::from_millis(1500));
+
+        // 先确认进程树确实存在且大于 1 个进程
+        let pids = collect_process_tree(root);
+        assert!(pids.len() >= 2, "expected a process tree, got {pids:?}");
+
+        kill_process_tree(root);
+        // 回收 root（script）的僵尸态，避免残留
+        let _ = child.wait();
+        std::thread::sleep(std::time::Duration::from_millis(300));
+
+        let after = collect_process_tree(root);
+        for p in after {
+            assert!(!is_alive(p), "pid {p} still alive after kill_process_tree");
+        }
+    }
 }
