@@ -728,6 +728,14 @@ pub fn get_dev_server_logs(state: State<'_, AppState>, path: String) -> Result<V
     Ok(buffers.get(&path).cloned().unwrap_or_default())
 }
 
+/// 清空指定路径的日志缓冲。dev server 若仍在运行，后续输出会继续追加。
+#[tauri::command]
+pub fn clear_dev_server_logs(state: State<'_, AppState>, path: String) -> Result<(), AppError> {
+    let mut buffers = state.log_buffers.lock().unwrap();
+    buffers.remove(&path);
+    Ok(())
+}
+
 pub fn cleanup_all_servers(state: &AppState) {
     let mut servers = state.servers.lock().unwrap();
     let pids: Vec<u32> = servers.values().copied().collect();

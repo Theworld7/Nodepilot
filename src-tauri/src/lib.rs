@@ -89,6 +89,7 @@ pub fn run() {
             commands::start_dev_server,
             commands::stop_dev_server,
             commands::get_dev_server_logs,
+            commands::clear_dev_server_logs,
             commands::get_running_servers,
             commands::list_git_branches,
             commands::checkout_branch,

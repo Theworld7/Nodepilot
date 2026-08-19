@@ -252,6 +252,18 @@ function toggleSelectAll() {
   lastClickedIndex.value = null
 }
 
+/** 清空日志：清后端缓冲（避免轮询回退时被重新拉回）+ 清前端显示。 */
+async function clearLogs() {
+  try {
+    await invoke("clear_dev_server_logs", { path: projectPath })
+    logs.value = []
+    MessagePlugin.success("日志已清空")
+  } catch (e) {
+    console.warn("clear logs failed:", e)
+    MessagePlugin.error("清理日志失败")
+  }
+}
+
 /** 点击日志中的链接：在系统默认浏览器打开，不触发日志窗口导航。 */
 function handleLogClick(e: MouseEvent) {
   const target = e.target as Element | null
@@ -323,9 +335,19 @@ watch(logs, () => {
             <t-button size="small" variant="text" @click="copySelected">复制</t-button>
             <t-button size="small" variant="text" @click="cancelSelection">取消</t-button>
           </template>
-          <t-button v-else size="small" variant="text" @click="enterSelectionModeFromHeader">
-            选择
-          </t-button>
+          <template v-else>
+            <t-button size="small" variant="text" @click="enterSelectionModeFromHeader">
+              选择
+            </t-button>
+            <t-button
+              size="small"
+              variant="text"
+              :disabled="logs.length === 0"
+              @click="clearLogs"
+            >
+              清理
+            </t-button>
+          </template>
         </div>
       </div>
     </div>
