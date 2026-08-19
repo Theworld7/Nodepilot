@@ -1,10 +1,12 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use tauri::{AppHandle, Emitter, State};
 use tokio::io::AsyncBufReadExt;
 
+use crate::client::{self, HttpClient};
 use crate::error::AppError;
 use crate::tray;
 use crate::version::event::{EventSink, VersionEvent};
@@ -89,6 +91,21 @@ mod tests {
 
         let input2 = "\x1b[32m➜\x1b[39m  \x1b[1mLocal\x1b[22m:   \x1b[36mhttp://localhost:\x1b[1m3006\x1b[22m/\x1b[39m";
         assert_eq!(strip_ansi(input2), "➜  Local:   http://localhost:3006/");
+    }
+
+    #[test]
+    fn parse_version_accepts_v_prefix_and_plain() {
+        assert_eq!(parse_version("v0.2.7"), Some((0, 2, 7)));
+        assert_eq!(parse_version("0.2.7"), Some((0, 2, 7)));
+        assert_eq!(parse_version("v24.1.2"), Some((24, 1, 2)));
+    }
+
+    #[test]
+    fn parse_version_rejects_non_standard() {
+        assert_eq!(parse_version("v0.2"), None);
+        assert_eq!(parse_version("latest"), None);
+        assert_eq!(parse_version("0.2.7-beta"), None);
+        assert_eq!(parse_version(""), None);
     }
 }
 
@@ -791,6 +808,84 @@ pub async fn checkout_branch(path: String, branch: String) -> Result<(), AppErro
     }
 
     Ok(())
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AppUpdateInfo {
+    pub version: String,
+    pub url: String,
+}
+
+const UPDATE_ENDPOINT: &str = "https://api.github.com/repos/Theworld7/Nodepilot/releases/latest";
+
+/// 检查 GitHub 上是否有新版本（见 ADR 0007）。
+/// dev 模式直接返回 None；网络失败、超时、非标准 tag 均静默返回 None。
+#[tauri::command]
+pub async fn check_app_update() -> Result<Option<AppUpdateInfo>, AppError> {
+    if cfg!(debug_assertions) {
+        return Ok(None);
+    }
+
+    let client = match client::HttpClientProd::new() {
+        Ok(c) => c,
+        Err(e) => {
+            log::debug!("check_app_update: failed to build http client: {e}");
+            return Ok(None);
+        }
+    };
+
+    let resp = match tokio::time::timeout(Duration::from_secs(5), client.get(UPDATE_ENDPOINT)).await
+    {
+        Ok(Ok(r)) => r,
+        Ok(Err(e)) => {
+            log::debug!("check_app_update: request failed: {e}");
+            return Ok(None);
+        }
+        Err(_) => {
+            log::debug!("check_app_update: request timed out");
+            return Ok(None);
+        }
+    };
+
+    let data: serde_json::Value = match serde_json::from_slice(&resp.data) {
+        Ok(v) => v,
+        Err(e) => {
+            log::debug!("check_app_update: bad json: {e}");
+            return Ok(None);
+        }
+    };
+
+    let tag = match data.get("tag_name").and_then(|t| t.as_str()) {
+        Some(t) => t,
+        None => return Ok(None),
+    };
+    let url = match data.get("html_url").and_then(|u| u.as_str()) {
+        Some(u) => u,
+        None => return Ok(None),
+    };
+
+    let (Some(latest), Some(current)) = (parse_version(tag), parse_version(env!("CARGO_PKG_VERSION")))
+    else {
+        return Ok(None);
+    };
+
+    if latest > current {
+        Ok(Some(AppUpdateInfo {
+            version: tag.trim_start_matches('v').to_string(),
+            url: url.to_string(),
+        }))
+    } else {
+        Ok(None)
+    }
+}
+
+/// 解析 "v0.2.7" / "0.2.7" 形式的三段数字版本号；非标准格式返回 None。
+fn parse_version(s: &str) -> Option<(u32, u32, u32)> {
+    let mut parts = s.trim_start_matches('v').split('.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next()?.parse().ok()?;
+    let patch = parts.next()?.parse().ok()?;
+    Some((major, minor, patch))
 }
 
 struct NopSink;

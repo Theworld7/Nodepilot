@@ -92,6 +92,7 @@ pub fn run() {
             commands::get_running_servers,
             commands::list_git_branches,
             commands::checkout_branch,
+            commands::check_app_update,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {

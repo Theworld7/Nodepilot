@@ -2,8 +2,11 @@
 import { ref, onMounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { confirm } from '@tauri-apps/plugin-dialog'
+import { openUrl } from '@tauri-apps/plugin-opener'
+import { DialogPlugin } from 'tdesign-vue-next'
 import LogView from './panels/LogView.vue'
 import VersionListPanel from './panels/VersionListPanel.vue'
+import type { AppUpdateInfo } from './types'
 
 const params = new URLSearchParams(window.location.search)
 const isLogView = ref(params.get('view') === 'log')
@@ -11,6 +14,8 @@ const setupError = ref<string | null>(null)
 
 onMounted(async () => {
   if (isLogView.value) return
+
+  checkForUpdate()
 
   try {
     const done = await invoke<boolean>('is_auto_setup_done')
@@ -49,6 +54,25 @@ onMounted(async () => {
 ;(window as any).__rollbackSetup = () => invoke('rollback_setup')
 ;(window as any).__isAutoSetupDone = () => invoke('is_auto_setup_done')
 ;(window as any).__autoSetup = () => invoke('auto_setup')
+
+// 启动时异步检查应用更新（ADR 0007）。失败静默。
+async function checkForUpdate() {
+  try {
+    const upd = await invoke<AppUpdateInfo | null>('check_app_update')
+    if (!upd) return
+    DialogPlugin.confirm({
+      header: '发现新版本',
+      body: `nodepilot v${upd.version} 已发布，是否前往下载？`,
+      confirmBtn: '前往下载',
+      cancelBtn: '稍后',
+      onConfirm: () => {
+        openUrl(upd.url).catch((err) => console.warn('打开更新页面失败:', err))
+      },
+    })
+  } catch {
+    // IPC 不可用（浏览器 dev）或命令失败，静默
+  }
+}
 </script>
 
 <template>

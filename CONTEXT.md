@@ -62,6 +62,9 @@ If environment setup fails (e.g. file write error, invalid shell config), all mo
 ### Global Package Migration
 Upon activation of a different version, offers to reinstall the global npm packages from the previously active version.
 
+### App Update (应用更新)
+A new release of the nodepilot application itself, published on GitHub Releases. Distinct from Node.js Version, which is the application's managed object. On launch, the backend checks the latest release and, if it is newer than the installed version, prompts the user to visit the release page. Download and installation are manual via the release page.
+
 ## Technical Architecture
 
 ### Backend

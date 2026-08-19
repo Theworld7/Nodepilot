@@ -31,3 +31,8 @@ export interface GitBranchInfo {
 export interface GitBranches {
   branches: GitBranchInfo[]
 }
+
+export interface AppUpdateInfo {
+  version: string
+  url: string
+}
