@@ -466,6 +466,29 @@ pub fn detect_pm(path: String) -> String {
 }
 
 
+/// 向日志缓冲追加一行并推送到前端日志窗口。
+/// 诊断信息（启动命令、spawn 失败原因、退出码）统一走这里——
+/// 进程秒退时没有任何 stdout/stderr，只有这些信息能说明原因。
+fn push_log(
+    app: &AppHandle,
+    buffers: &Arc<Mutex<HashMap<String, Vec<String>>>>,
+    path: &str,
+    line: String,
+) {
+    {
+        let mut b = buffers.lock().unwrap();
+        let buf = b.entry(path.to_string()).or_default();
+        if buf.len() >= 1000 {
+            buf.remove(0);
+        }
+        buf.push(line.clone());
+    }
+    let _ = app.emit(
+        "dev_server_log",
+        serde_json::json!({ "path": path, "line": line }),
+    );
+}
+
 #[tauri::command]
 pub async fn start_dev_server(
     app: AppHandle,
@@ -514,7 +537,11 @@ pub async fn start_dev_server(
     // 永不会 EOF 的 stdin（sleep 进程持有管道写端，最长运行约68年）。
     // 这样 Vite 的 stdin 来自 sleep 管道而非 script 的 PTY 转发，
     // script 自身的 stdin 由 .stdin(piped()) 保持打开（Child 持有写端）。
-    let (program, args): (&str, Vec<String>) = if use_pty {
+    let (program, args): (&str, Vec<String>) = if cfg!(windows) {
+        // Windows：npm/pnpm/yarn 都是 .cmd 批处理，CreateProcess 只认 .exe，
+        // 直接 spawn 会 program not found，必须用 cmd /C 包装（命令原样交给 shell）。
+        ("cmd", vec!["/C".into(), command.clone()])
+    } else if use_pty {
         let inner = parts.join(" ");
         let shell_cmd = format!("sleep 2147483647 | {}", inner);
         (
@@ -540,8 +567,13 @@ pub async fn start_dev_server(
     };
 
     // 将 nodepilot 管理的 Node bin 目录加入 PATH，
-    // 避免打包应用因 PATH 受限而找不到 npm/pnpm/yarn 等命令
-    let nodepilot_bin = state.nodepilot_dir.join("current").join("bin");
+    // 避免打包应用因 PATH 受限而找不到 npm/pnpm/yarn 等命令。
+    // Windows 的 Node 发行版把 node.exe/npm.cmd 放在根目录（无 bin 子目录），
+    // PATH 分隔符也是 `;` 而非 `:`。
+    #[cfg(windows)]
+    let (path_sep, nodepilot_bin) = (";", state.nodepilot_dir.join("current"));
+    #[cfg(not(windows))]
+    let (path_sep, nodepilot_bin) = (":", state.nodepilot_dir.join("current").join("bin"));
     let existing_path = std::env::var("PATH").unwrap_or_default();
 
     // 注入常见开发工具路径，解决打包应用 PATH 受限问题
@@ -559,12 +591,17 @@ pub async fn start_dev_server(
         .filter(|p| p.exists())
         .map(|p| p.display().to_string())
         .collect::<Vec<_>>()
-        .join(":");
+        .join(path_sep);
 
     let new_path = if extra.is_empty() {
-        format!("{}:{}", nodepilot_bin.display(), existing_path)
+        format!("{}{path_sep}{}", nodepilot_bin.display(), existing_path)
     } else {
-        format!("{}:{}:{}", nodepilot_bin.display(), extra, existing_path)
+        format!(
+            "{}{path_sep}{}{path_sep}{}",
+            nodepilot_bin.display(),
+            extra,
+            existing_path
+        )
     };
 
     // stdin 必须设为 piped，而不是继承 Tauri 进程的 stdin。
@@ -587,9 +624,29 @@ pub async fn start_dev_server(
         cmd.creation_flags(0x0800_0000);
     }
 
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| AppError::Io(format!("failed to start dev server: {e}")))?;
+    // 启动前打点：命令、工作目录、PATH。进程秒退时这三项是唯一线索。
+    push_log(&app, &state.log_buffers, &path, format!("[nodepilot] cwd: {}", project_dir.display()));
+    push_log(&app, &state.log_buffers, &path, format!("[nodepilot] 原始命令: {command}"));
+    push_log(
+        &app,
+        &state.log_buffers,
+        &path,
+        format!("[nodepilot] 实际执行: {program} {}", args.join(" ")),
+    );
+    push_log(&app, &state.log_buffers, &path, format!("[nodepilot] PATH: {new_path}"));
+
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => {
+            push_log(
+                &app,
+                &state.log_buffers,
+                &path,
+                format!("[nodepilot] spawn 失败: {e}（kind={:?}）", e.kind()),
+            );
+            return Err(AppError::Io(format!("failed to start dev server: {e}")));
+        }
+    };
 
     let child_pid = child.id();
 
@@ -610,13 +667,26 @@ pub async fn start_dev_server(
     let exit_app = app.clone();
     let exit_path = path.clone();
     let exit_servers = state.servers.clone();
+    let exit_buffers = state.log_buffers.clone();
     tokio::spawn(async move {
-        let _ = child.wait().await;
+        let status = child.wait().await;
 
         {
             let mut servers = exit_servers.lock().unwrap();
             servers.remove(&exit_path);
         }
+
+        // 退出码是"秒退"问题的核心线索：127=命令未找到，0=进程主动结束（如 stdin 关闭）
+        let desc = match status {
+            Ok(s) => format!("退出码 {:?}", s.code()),
+            Err(e) => format!("wait 失败: {e}"),
+        };
+        push_log(
+            &exit_app,
+            &exit_buffers,
+            &exit_path,
+            format!("[nodepilot] 进程结束（{desc}）"),
+        );
 
         let _ = exit_app.emit("dev_server_status", serde_json::json!({
             "path": exit_path,

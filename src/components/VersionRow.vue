@@ -75,10 +75,14 @@ async function handleStart(p: ProjectInfo) {
     runningServers.value = new Set(runningServers.value).add(p.path);
   } catch (e) {
     console.error("start dev server failed:", e);
+    // AppError 序列化为 { kind, message }，直接 String(e) 会得到 [object Object]
+    const msg = (e as { message?: string })?.message ?? String(e);
     // 后端已有该服务在运行（前端状态丢失或重复点击）→ 同步 UI 状态并提示
-    if (String(e).includes("server already running")) {
+    if (msg.includes("server already running")) {
       runningServers.value = new Set(runningServers.value).add(p.path);
       MessagePlugin.info("服务已在运行");
+    } else {
+      MessagePlugin.error(`启动失败：${msg}`);
     }
   } finally {
     const next = new Set(startingServers.value);
