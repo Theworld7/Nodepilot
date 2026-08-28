@@ -370,9 +370,12 @@ function cancelSettings() {
             placeholder="可选，如 dsh web / pnpm dsh web"
             clearable
           />
-          <div class="settings-hint">
-            设置后 ▶ 将原样执行该命令（在项目目录下），并优先于「默认执行命令 + 命令前缀」
-          </div>
+          <!-- 用 #help 槽：渲染在 .t-form__controls-content 外面，自动换行到输入框下方 -->
+          <template #help>
+            <div class="settings-hint">
+              设置后 ▶ 将原样执行该命令（在项目目录下），并优先于「默认执行命令 + 命令前缀」
+            </div>
+          </template>
         </t-form-item>
       </t-form>
 
@@ -594,14 +597,19 @@ function cancelSettings() {
   margin: 8px 0;
 }
 
-/* 自定义启动命令的提示：位于输入框下方、独立一行 */
+/* 自定义启动命令的提示：通过 #help 槽渲染在输入框下方
+   外层 .t-input__help 是 TDesign 自带样式（margin: 0、color: placeholder），
+   这里用 :deep() 覆盖成项目自定义外观 */
+.settings-form :deep(.t-input__help) {
+  margin-top: 8px;
+  color: var(--text-light);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .settings-hint {
   display: block;
   width: 100%;
-  margin-top: 8px;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--text-light);
 }
 
 .settings-custom-input {
