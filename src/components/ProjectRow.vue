@@ -116,6 +116,7 @@ const showSettings = ref(false)
 const scripts = ref<Record<string, string>>({})
 const formData = reactive({
   selectedScript: "",
+  customScriptName: "",
   prefixInput: "",
   customCommand: "",
 })
@@ -125,19 +126,9 @@ async function openSettings() {
   loadingScripts.value = true
   scripts.value = {}
   formData.selectedScript = ""
+  formData.customScriptName = ""
   formData.prefixInput = ""
   formData.customCommand = ""
-
-  // 预填已保存的配置
-  if (props.project.default_script) {
-    formData.selectedScript = props.project.default_script
-  }
-  if (props.project.command_prefix) {
-    formData.prefixInput = props.project.command_prefix
-  }
-  if (props.project.start_command) {
-    formData.customCommand = props.project.start_command
-  }
 
   try {
     const pkg = await invoke<{ scripts?: Record<string, string> }>("read_package_json", {
@@ -145,13 +136,6 @@ async function openSettings() {
     })
     if (pkg?.scripts) {
       scripts.value = pkg.scripts
-      // 如果没有保存的配置但项目有 scripts，默认选中第一个
-      if (!formData.selectedScript) {
-        const keys = Object.keys(scripts.value)
-        if (keys.length > 0) {
-          formData.selectedScript = keys[0]
-        }
-      }
     } else {
       scripts.value = {}
     }
@@ -160,14 +144,38 @@ async function openSettings() {
     scripts.value = {}
   }
 
+  // 预填已保存的配置：保存在 scripts 里的进 selectedScript，否则作为自定义命令名
+  if (props.project.default_script) {
+    if (Object.keys(scripts.value).includes(props.project.default_script)) {
+      formData.selectedScript = props.project.default_script
+    } else {
+      formData.customScriptName = props.project.default_script
+    }
+  }
+  // 如果没有保存的配置但项目有 scripts，默认选中第一个
+  if (!formData.selectedScript && !formData.customScriptName) {
+    const keys = Object.keys(scripts.value)
+    if (keys.length > 0) {
+      formData.selectedScript = keys[0]
+    }
+  }
+
+  if (props.project.command_prefix) {
+    formData.prefixInput = props.project.command_prefix
+  }
+  if (props.project.start_command) {
+    formData.customCommand = props.project.start_command
+  }
+
   loadingScripts.value = false
   showSettings.value = true
 }
 
 async function saveSettings() {
-  const script = formData.selectedScript.trim() || null
-  const prefix = formData.prefixInput.trim() || null
-  const startCommand = formData.customCommand.trim() || null
+  // t-select 清空会把 v-model 设为 undefined（不是 ""），所以 trim 前要兜底
+  const script = (formData.selectedScript ?? "").trim() || (formData.customScriptName ?? "").trim() || null
+  const prefix = (formData.prefixInput ?? "").trim() || null
+  const startCommand = (formData.customCommand ?? "").trim() || null
   try {
     await invoke("update_project_config", {
       version: props.project.version,
@@ -177,8 +185,11 @@ async function saveSettings() {
       startCommand,
     })
     emit("updateConfig")
-  } catch (e) {
+  } catch (e: unknown) {
+    const msg = typeof e === "string" ? e : (e as Error)?.message || String(e)
     console.error("update project config failed:", e)
+    MessagePlugin.error(`保存失败：${msg}`)
+    return
   }
   showSettings.value = false
 }
@@ -344,19 +355,31 @@ function cancelSettings() {
               </div>
             </t-option>
           </t-select>
-          <!-- 无脚本或需要自定义时，允许手动输入 -->
-          <div v-if="Object.keys(scripts).length === 0" class="settings-empty">
-            该项目无可用脚本，请在下方输入自定义命令名
-          </div>
+          <!-- 无脚本时，提示用户去下方输入自定义命令名。用 #help 槽渲染在选择框下方 -->
+          <template v-if="Object.keys(scripts).length === 0" #help>
+            <div class="settings-empty">
+              该项目无可用脚本，请在下方输入自定义命令名
+            </div>
+          </template>
+        </t-form-item>
+
+        <t-form-item
+          v-if="!formData.selectedScript"
+          label="自定义命令名"
+          name="customScriptName"
+        >
           <t-input
-            v-if="!formData.selectedScript"
-            v-model="formData.selectedScript"
+            v-model="formData.customScriptName"
             placeholder="输入自定义脚本名，如 dev"
             class="settings-custom-input"
           />
         </t-form-item>
 
-        <t-form-item label="命令前缀" name="prefixInput">
+        <t-form-item
+          v-if="formData.selectedScript"
+          label="命令前缀"
+          name="prefixInput"
+        >
           <t-input
             v-model="formData.prefixInput"
             placeholder="可选，如 tauri"
@@ -364,7 +387,11 @@ function cancelSettings() {
           />
         </t-form-item>
 
-        <t-form-item label="自定义启动命令" name="customCommand">
+        <t-form-item
+          v-if="!formData.selectedScript"
+          label="自定义启动命令"
+          name="customCommand"
+        >
           <t-input
             v-model="formData.customCommand"
             placeholder="可选，如 dsh web / pnpm dsh web"

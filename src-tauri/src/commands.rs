@@ -570,10 +570,38 @@ pub async fn start_dev_server(
     // 避免打包应用因 PATH 受限而找不到 npm/pnpm/yarn 等命令。
     // Windows 的 Node 发行版把 node.exe/npm.cmd 放在根目录（无 bin 子目录），
     // PATH 分隔符也是 `;` 而非 `:`。
+    //
+    // 必须用项目绑定的 Node 版本（如 v14.21.3），不能用全局 current 符号链接——
+    // current 是用户激活的版本，可能与项目不匹配（例如 v14 项目装了 v24 current，
+    // npm install 会跑 v24，触发 deasync 等仅支持新版的原生模块报错）。
+    let project_version = read_projects(&state.projects_path)
+        .iter()
+        .find(|p| p.path == path)
+        .map(|p| p.version.clone());
     #[cfg(windows)]
-    let (path_sep, nodepilot_bin) = (";", state.nodepilot_dir.join("current"));
+    let (path_sep, nodepilot_bin) = (";", {
+        let specific = state.nodepilot_dir.join("versions").join(
+            project_version.as_deref().unwrap_or("current"),
+        );
+        if specific.exists() {
+            specific
+        } else {
+            state.nodepilot_dir.join("current")
+        }
+    });
     #[cfg(not(windows))]
-    let (path_sep, nodepilot_bin) = (":", state.nodepilot_dir.join("current").join("bin"));
+    let (path_sep, nodepilot_bin) = (":", {
+        let specific = state
+            .nodepilot_dir
+            .join("versions")
+            .join(project_version.as_deref().unwrap_or("current"))
+            .join("bin");
+        if specific.exists() {
+            specific
+        } else {
+            state.nodepilot_dir.join("current").join("bin")
+        }
+    });
     let existing_path = std::env::var("PATH").unwrap_or_default();
 
     // 注入常见开发工具路径，解决打包应用 PATH 受限问题
@@ -633,7 +661,12 @@ pub async fn start_dev_server(
         &path,
         format!("[nodepilot] 实际执行: {program} {}", args.join(" ")),
     );
-    push_log(&app, &state.log_buffers, &path, format!("[nodepilot] PATH: {new_path}"));
+    push_log(
+        &app,
+        &state.log_buffers,
+        &path,
+        format!("[nodepilot] PATH:\n  {}", new_path.replace(path_sep, &format!("\n  "))),
+    );
 
     let mut child = match cmd.spawn() {
         Ok(c) => c,
