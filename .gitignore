@@ -29,3 +29,9 @@ src-tauri/gen/
 
 # Claude Code 本地配置（个人权限列表，不入库）
 .claude/settings.local.json
+
+# 本地工作区数据（记忆、会话等）
+.workbuddy/
+
+# 工具生成的临时文件
+_tmp_*
