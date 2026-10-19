@@ -212,6 +212,7 @@ pnpm tauri build
 - [ADR-0004](docs/adr/0004-regular-desktop-window.md) — 传统桌面窗口替代弹出面板
 - [ADR-0005](docs/adr/0005-tdesign-desktop-migration.md) — 使用 TDesign 组件库替代自定义 UI
 - [ADR-0006](docs/adr/0006-git-branch-switching.md) — 项目行内 Git 分支切换
+- [ADR-0008](docs/adr/0008-single-instance.md) — 单实例运行，重复启动聚焦已有窗口
 
 ## 🤝 贡献
 

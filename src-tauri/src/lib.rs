@@ -65,6 +65,14 @@ pub fn run() {
     };
 
     tauri::Builder::default()
+        // 单实例插件必须最先注册，重复启动时聚焦已有窗口
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        }))
         .manage(state)
         .invoke_handler(tauri::generate_handler![
             commands::get_versions,
