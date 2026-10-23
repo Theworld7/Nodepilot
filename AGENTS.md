@@ -2,7 +2,7 @@
 
 nodepilot 是基于 Tauri 2 的桌面端 Node.js 版本管理器（macOS + Windows）。Rust 后端拥有全部版本管理逻辑，Vue 3 前端仅负责展示。代码注释、提交信息均使用中文。
 
-详细产品功能见 `README.md`，领域术语见 `CONTEXT.md`，架构决策见 `docs/adr/`（新增架构决策需写 ADR）。本文件是仓库唯一的 agent 指引，不再维护 Claude/Cursor/CodeBuddy 专用副本。
+详细产品功能见 `README.md`，领域术语见 `GLOSSARY.md`，架构决策见 `docs/adr/`（新增架构决策需写 ADR）。本文件是仓库唯一的 agent 指引，不再维护 Claude/Cursor/CodeBuddy 专用副本。
 
 ## 改动后验证（不需要全量构建）
 
